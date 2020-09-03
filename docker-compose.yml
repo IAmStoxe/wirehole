@@ -1,0 +1,81 @@
+version: "3"
+
+networks:
+  piguard:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.1.0.0/24
+services:
+  wireguard:
+    depends_on: [unbound]
+    privileged: false
+    image: linuxserver/wireguard
+    container_name: wireguard
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Los_Angeles
+      # - SERVERURL=wireguard.domain.com #optional
+      - SERVERPORT=5555 #optional
+      - PEERS=1 #optional
+      - PEERDNS=10.1.0.100 # Set it to point to pihole
+      - INTERNAL_SUBNET=10.6.0.0 #optional
+    volumes:
+      - ./wireguard:/config
+      - /lib/modules:/lib/modules
+    ports:
+      - 5555:51820/udp
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    restart: unless-stopped
+    networks:
+      piguard:
+        ipv4_address: 10.1.0.3
+
+  unbound:
+    container_name: unbound
+    privileged: false
+    volumes:
+      - "./unbound:/opt/unbound/etc/unbound/"
+    # ports:
+    #   - "53:53/tcp"
+    #   - "53:53/udp"
+    restart: unless-stopped
+    image: "mvance/unbound:latest"
+    networks:
+      piguard:
+        ipv4_address: 10.1.0.200
+
+  pihole:
+    depends_on: [unbound]
+    container_name: pihole
+    image: pihole/pihole:latest
+    privileged: false
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      # - "67:67/udp" # Uncomment for pihole dhcp
+      - "80:80/tcp"
+      - "443:443/tcp"
+    environment:
+      TZ: "America/Los_Angeles"
+      WEBPASSWORD: ''
+      ServerIP: 10.1.0.100
+      DNS1: 10.1.0.200
+      DNS2: 10.1.0.200
+    # Volumes store your data between container upgrades
+    volumes:
+      - "./etc-pihole/:/etc/pihole/"
+      - "./etc-dnsmasq.d/:/etc/dnsmasq.d/"
+    # Recommended but not required (DHCP needs NET_ADMIN)
+    #   https://github.com/pi-hole/docker-pi-hole#note-on-capabilities
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+    networks:
+      piguard:
+        ipv4_address: 10.1.0.100
