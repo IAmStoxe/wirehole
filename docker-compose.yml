@@ -12,9 +12,9 @@ services:
     image: "mvance/unbound:latest"
     container_name: unbound
     restart: unless-stopped
-    # ports:
-    #   - "53:53/tcp"
-    #   - "53:53/udp"
+    ports:
+      - "53/tcp"
+      - "53/udp"
     volumes:
       - "./unbound:/opt/unbound/etc/unbound/"
     networks:
@@ -37,13 +37,14 @@ services:
       - PEERS=1 #optional - How many peers to generate for you (clients)
       - PEERDNS=10.1.0.100 # Set it to point to pihole
       - INTERNAL_SUBNET=10.6.0.0
+      
     volumes:
       - ./wireguard:/config
       - /lib/modules:/lib/modules
     ports:
       - "51820:51820/udp"
     dns:
-      - 10.1.0.100 # Points to pihole
+      - 10.1.0.100
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
     restart: unless-stopped
@@ -64,8 +65,8 @@ services:
       - "80:80/tcp"
       - "443:443/tcp"
     dns:
+      - 127.0.0.1
       - 10.1.0.200 # Points to unbound
-      - 1.1.1.1
     environment:
       TZ: "America/Los_Angeles"
       WEBPASSWORD: "" # Blank password - Can be whatever you want.
