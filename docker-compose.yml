@@ -1,15 +1,28 @@
 version: "3"
 
 networks:
-  piguard:
+  private_network:
     ipam:
       driver: default
       config:
         - subnet: 10.1.0.0/24
+
 services:
+  unbound:
+    image: "mvance/unbound:latest"
+    container_name: unbound
+    restart: unless-stopped
+    # ports:
+    #   - "53:53/tcp"
+    #   - "53:53/udp"
+    volumes:
+      - "./unbound:/opt/unbound/etc/unbound/"
+    networks:
+      private_network:
+        ipv4_address: 10.1.0.200
+
   wireguard:
-    depends_on: [unbound]
-    privileged: false
+    depends_on: [unbound, pihole]
     image: linuxserver/wireguard
     container_name: wireguard
     cap_add:
@@ -20,53 +33,45 @@ services:
       - PGID=1000
       - TZ=America/Los_Angeles
       # - SERVERURL=wireguard.domain.com #optional
-      - SERVERPORT=5555 #optional
-      - PEERS=1 #optional
+      - SERVERPORT=51820 #optional
+      - PEERS=1 #optional - How many peers to generate for you (clients)
       - PEERDNS=10.1.0.100 # Set it to point to pihole
-      - INTERNAL_SUBNET=10.6.0.0 #optional
+      - INTERNAL_SUBNET=10.6.0.0
     volumes:
       - ./wireguard:/config
       - /lib/modules:/lib/modules
     ports:
-      - 5555:51820/udp
+      - "51820:51820/udp"
+    dns:
+      - 10.1.0.100 # Points to pihole
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
     restart: unless-stopped
     networks:
-      piguard:
+      private_network:
         ipv4_address: 10.1.0.3
-
-  unbound:
-    container_name: unbound
-    privileged: false
-    volumes:
-      - "./unbound:/opt/unbound/etc/unbound/"
-    # ports:
-    #   - "53:53/tcp"
-    #   - "53:53/udp"
-    restart: unless-stopped
-    image: "mvance/unbound:latest"
-    networks:
-      piguard:
-        ipv4_address: 10.1.0.200
 
   pihole:
     depends_on: [unbound]
     container_name: pihole
     image: pihole/pihole:latest
-    privileged: false
+    restart: unless-stopped
+    privileged: true
     ports:
       - "53:53/tcp"
       - "53:53/udp"
       # - "67:67/udp" # Uncomment for pihole dhcp
       - "80:80/tcp"
       - "443:443/tcp"
+    dns:
+      - 10.1.0.200 # Points to unbound
+      - 1.1.1.1
     environment:
       TZ: "America/Los_Angeles"
-      WEBPASSWORD: ''
+      WEBPASSWORD: "" # Blank password - Can be whatever you want.
       ServerIP: 10.1.0.100
-      DNS1: 10.1.0.200
-      DNS2: 10.1.0.200
+      DNS1: 10.1.0.200 # Unbound IP
+      DNS2: 10.1.0.200 # If we don't specify two, it will auto pick google.
     # Volumes store your data between container upgrades
     volumes:
       - "./etc-pihole/:/etc/pihole/"
@@ -75,7 +80,6 @@ services:
     #   https://github.com/pi-hole/docker-pi-hole#note-on-capabilities
     cap_add:
       - NET_ADMIN
-    restart: unless-stopped
     networks:
-      piguard:
+      private_network:
         ipv4_address: 10.1.0.100
