@@ -12,9 +12,6 @@ services:
     image: "mvance/unbound:latest"
     container_name: unbound
     restart: unless-stopped
-    ports:
-      - "53/tcp"
-      - "53/udp"
     hostname: "unbound"
     volumes:
       - "./unbound:/opt/unbound/etc/unbound/"
@@ -49,6 +46,7 @@ services:
       - 10.2.0.200 # Points to unbound
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
+
     restart: unless-stopped
     networks:
       private_network:
@@ -60,12 +58,6 @@ services:
     image: pihole/pihole:latest
     restart: unless-stopped
     hostname: pihole
-    ports:
-      - "53/tcp"
-      - "53/udp"
-      # - "67:67/udp" # Uncomment for pihole dhcp
-      - "80/tcp"
-      - "443/tcp"
     dns:
       - 127.0.0.1
       - 10.2.0.200 # Points to unbound
