@@ -34,6 +34,7 @@ services:
       - PGID=1000
       - TZ=America/Los_Angeles # Change to your timezone
       - SERVERPORT=51820
+      #- SERVERURL=my.ddns.net #optional - For use with DDNS (Uncomment to use)
       - PEERS=1 # How many peers to generate for you (clients)
       - PEERDNS=10.2.0.100 # Set it to point to pihole
       - INTERNAL_SUBNET=10.6.0.0

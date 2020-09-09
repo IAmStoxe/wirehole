@@ -111,3 +111,21 @@ While connected to WireGuard, navigate to http://10.2.0.100/admin
 *The password (unless you set it in `docker-compose.yml`) is blank.*
 
 ![](https://i.imgur.com/hlHL6VA.png)
+
+---
+
+## Configuring for Dynamic DNS (DDNS)
+If you're using a dynamic DNS provider, you can edit `docker-compose.yml` under "wireguard". 
+Here is an excerpt from the file. 
+
+You need to uncomment `#- SERVERURL` so it reads `- SERVERURL` without the `#` and then change `my.ddns.net` to your DDNS URL.
+
+```yaml
+wireguard:
+   # ...
+    environment:
+      # ...
+      - SERVERURL=my.ddns.net #optional - For use with DDNS (Uncomment to use)
+      # ...
+ # ...
+```
