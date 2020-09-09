@@ -1,7 +1,6 @@
 
 ## Prerequisites:
 
-- 💻 **Installed**: **docker** and **docker-compose**
 - ☁ If using a cloud provider:
     - You need to allow ingress to port `51820`
 
