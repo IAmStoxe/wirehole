@@ -4,6 +4,9 @@
 - ☁ If using a cloud provider:
     - You need to allow ingress to port `51820`
 
+##### Optional Fully Automated Deployment on Oracle Cloud:
+  - https://medium.com/@devinjaystokes/automating-the-deployment-of-your-forever-free-pihole-and-wireguard-server-dce581f71b7
+
 To get started all you need to do is clone the repository and spin up the containers.
 
 ### Quickstart
