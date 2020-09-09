@@ -42,16 +42,6 @@ sudo curl -L "https://github.com/docker/compose/releases/download/1.26.2/docker-
     sudo chmod +x /usr/local/bin/docker-compose &&
     sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
 
-# Fix dns issues
-sudo systemctl stop systemd-resolved
-
-sudo sed -i 's/#DNSStubListener=yes/DNSStubListener=no/g' /etc/systemd/resolved.conf &&
-    sudo sed -i 's/^#DNS=.*/DNS=1.1.1.1/g' /etc/systemd/resolved.conf &&
-    sudo systemctl stop systemd-resolved &&
-    sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
-
-sudo systemctl start systemd-resolved
-
 # wirehole
 git clone https://github.com/IAmStoxe/wirehole.git &&
     cd wirehole &&
