@@ -56,7 +56,7 @@ Within the output of the terminal will be QR codes you can (if you choose) to se
 
 ```bash
 wireguard    | **** Internal subnet is set to 10.6.0.0 ****
-wireguard    | **** Peer DNS servers will be set to 10.1.0.100 ****
+wireguard    | **** Peer DNS servers will be set to 10.2.0.100 ****
 wireguard    | **** No found wg0.conf found (maybe an initial install), generating 1 server and 1 peer/client confs ****
 wireguard    | PEER 1 QR code:
 wireguard    | █████████████████████████████████████████████████████████████████
