@@ -6,10 +6,12 @@
 
 ##### Optional Fully Automated Deployment on Oracle Cloud:
   - https://medium.com/@devinjaystokes/automating-the-deployment-of-your-forever-free-pihole-and-wireguard-server-dce581f71b7
-
-To get started all you need to do is clone the repository and spin up the containers.
+  
+---
 
 ### Quickstart
+To get started all you need to do is clone the repository and spin up the containers.
+
 ```bash
 git clone https://github.com/IAmStoxe/wirehole.git
 cd wirehole
