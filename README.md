@@ -129,3 +129,24 @@ wireguard:
       # ...
  # ...
 ```
+
+---
+
+
+## Author
+
+👤 **Devin Stokes**
+
+* Twitter: [@DevinStokes](https://twitter.com/DevinStokes)
+* Github: [@IAmStoxe](https://github.com/IAmStoxe)
+
+## 🤝 Contributing
+
+Contributions, issues and feature requests are welcome!<br />Feel free to check [issues page](https://github.com/IAmStoxe/urlgrab/issue). 
+
+## Show your support
+
+Give a ⭐ if this project helped you!
+
+<a href="https://www.buymeacoffee.com/stoxe" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" style="height: 51px !important;width: 217px !important;" ></a>
+
