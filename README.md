@@ -102,9 +102,13 @@ wireguard    | [cont-init.d] done.
 wireguard    | [services.d] starting services
 ```
 
+---
+
 ## Recommended configuration / Split tunnel:
 
 Modify your wireguard client `AllowedIps` to `10.2.0.0/24` to only tunnel the web panel and DNS traffic.
+
+---
 
 ## Access PiHole
 
@@ -134,6 +138,44 @@ wireguard:
 
 ---
 
+## Modifying the upstream DNS provider for Unbound
+If you choose to not use Cloudflare any reason you are able to modify the upstream DNS provider in `unbound.conf`.
+
+Search for `forward-zone` and modify the IP addresses for your chosen DNS provider.
+
+>**NOTE:** The anything after `#` is a comment on the line. 
+What this means is it is just there to tell you which DNS provider you put there. It is for you to be able to reference later. I recommend updating this if you change your DNS provider from the default values.
+
+
+```yaml
+forward-zone:
+        name: "."
+        forward-addr: 1.1.1.1@853#cloudflare-dns.com
+        forward-addr: 1.0.0.1@853#cloudflare-dns.com
+        forward-addr: 2606:4700:4700::1111@853#cloudflare-dns.com
+        forward-addr: 2606:4700:4700::1001@853#cloudflare-dns.com
+        forward-tls-upstream: yes
+```
+
+---
+
+## Available DNS Providers
+
+While you can actually use any upstream provider you want, the team over at pi-hole.net provide a fantastic break down along with all needed information of some of the more popular providers here:
+https://docs.pi-hole.net/guides/upstream-dns-providers/
+
+Providers they have the information for:
+
+1. Google
+2. OpenDNS
+3. Level3
+4. Comodo
+5. DNS.WATCH
+6. Quad9
+7. CloudFlare DNS
+
+
+---
 
 ## Author
 
@@ -150,5 +192,4 @@ Contributions, issues and feature requests are welcome!<br />Feel free to check 
 
 Give a ⭐ if this project helped you!
 
-<a href="https://www.buymeacoffee.com/stoxe" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" style="height: 51px !important;width: 217px !important;" ></a>
-
+<a href="https://www.buymeacoffee.com/stoxe" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-orange.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
