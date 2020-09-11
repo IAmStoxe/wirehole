@@ -177,13 +177,19 @@ Providers they have the information for:
 
 ---
 
-## (Optional) Setting a DNS record for pihole
+## Setting a DNS record for pihole
 1. Login to pihole admin
 2. Navigate to "Local Records"
 3. Fill out the form like the image below
 ![Image](https://i.imgur.com/PM1kwcf.png)
 
 Provided your DNS is properly configured on the device you're using, and you're connected to WireGuard, you can now navigate to http://pi.hole/admin and it should take you right to the pihole admin interface.
+
+---
+
+## FAQ
+
+### [How do you add client configurations?](https://github.com/IAmStoxe/wirehole/issues/2#issuecomment-691294254)
 
 ---
 
