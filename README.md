@@ -203,7 +203,9 @@ The templates used for server and peer confs are saved under /config/templates. 
 ### Where can I get additional block lists?
 * [The Big Blocklist Collection](https://firebog.net/)
 
-
+### Commonly whitelisted domains
+* [Pi-Hole Community List](https://discourse.pi-hole.net/t/commonly-whitelisted-domains/212)
+* [anudeepND Whitelist](https://github.com/anudeepND/whitelist)
 
 ---
 
