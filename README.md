@@ -200,6 +200,11 @@ To display the QR codes of active peers again, you can use the following command
 
 The templates used for server and peer confs are saved under /config/templates. Advanced users can modify these templates and force conf generation by deleting /config/wg0.conf and restarting the container.
 
+### Where can I get additional block lists?
+* [The Big Blocklist Collection](https://firebog.net/)
+
+
+
 ---
 
 ## Author
