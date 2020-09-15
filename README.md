@@ -210,7 +210,7 @@ The templates used for server and peer confs are saved under /config/templates. 
 * [anudeepND Whitelist](https://github.com/anudeepND/whitelist)
 
 ### Why do you use Unbound / What benefit is there to using Unbound?
-[PiHole Official Site: What does this guide provide?](https://docs.pi-hole.net/guides/unbound/#what-does-this-guide-provide]
+[PiHole Official Site: What does this guide provide?](https://docs.pi-hole.net/guides/unbound/#what-does-this-guide-provide)
 
 ---
 
