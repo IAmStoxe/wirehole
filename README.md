@@ -1,9 +1,6 @@
 ## What is this?
 WireHole is a combination of WireGuard, PiHole, and Unbound in a docker-compose project with the intent of enabling users to quickly and easily create and deploy a personally managed full or split-tunnel WireGuard VPN with ad blocking capabilities (via Pihole), and DNS caching with additional privacy options (via Unbound). 
 
----
-
-
 ## Prerequisites:
 
 - ☁ If using a cloud provider:
@@ -211,6 +208,9 @@ The templates used for server and peer confs are saved under /config/templates. 
 ### Commonly whitelisted domains
 * [Pi-Hole Community List](https://discourse.pi-hole.net/t/commonly-whitelisted-domains/212)
 * [anudeepND Whitelist](https://github.com/anudeepND/whitelist)
+
+### Why do you use Unbound / What benefit is there to using Unbound?
+[PiHole Official Site: What does this guide provide?](https://docs.pi-hole.net/guides/unbound/#what-does-this-guide-provide]
 
 ---
 
