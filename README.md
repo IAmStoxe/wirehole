@@ -1,5 +1,5 @@
 ## What is this?
-WireHole is a combination of WireGuard, Pi-hole, and Unbound in a docker-compose project with the intent of enabling users to quickly and easily create and deploy a personally managed full or split-tunnel WireGuard VPN with ad blocking capabilities (via Pi-hole), and DNS caching with additional privacy options (via Unbound). 
+WireHole is a combination of WireGuard, PiHole, and Unbound in a docker-compose project with the intent of enabling users to quickly and easily create and deploy a personally managed full or split-tunnel WireGuard VPN with ad blocking capabilities (via Pihole), and DNS caching with additional privacy options (via Unbound). 
 
 ## Prerequisites:
 
@@ -112,7 +112,7 @@ Modify your wireguard client `AllowedIps` to `10.2.0.0/24` to only tunnel the we
 
 ---
 
-## Access Pi-hole
+## Access PiHole
 
 While connected to WireGuard, navigate to http://10.2.0.100/admin
 
@@ -179,13 +179,13 @@ Providers they have the information for:
 
 ---
 
-## Setting a DNS record for Pi-hole
-1. Login to Pi-hole admin
+## Setting a DNS record for pihole
+1. Login to pihole admin
 2. Navigate to "Local Records"
 3. Fill out the form like the image below
 ![Image](https://i.imgur.com/PM1kwcf.png)
 
-Provided your DNS is properly configured on the device you're using, and you're connected to WireGuard, you can now navigate to http://pi.hole/admin and it should take you right to the Pi-hole admin interface.
+Provided your DNS is properly configured on the device you're using, and you're connected to WireGuard, you can now navigate to http://pi.hole/admin and it should take you right to the pihole admin interface.
 
 ---
 
@@ -206,11 +206,11 @@ The templates used for server and peer confs are saved under /config/templates. 
 * [The Big Blocklist Collection](https://firebog.net/)
 
 ### Commonly whitelisted domains
-* [Pi-hole Community List](https://discourse.pi-hole.net/t/commonly-whitelisted-domains/212)
+* [Pi-Hole Community List](https://discourse.pi-hole.net/t/commonly-whitelisted-domains/212)
 * [anudeepND Whitelist](https://github.com/anudeepND/whitelist)
 
 ### Why do you use Unbound / What benefit is there to using Unbound?
-* [Pi-hole Official Site: What does this guide provide?](https://docs.pi-hole.net/guides/unbound/#what-does-this-guide-provide)
+* [PiHole Official Site: What does this guide provide?](https://docs.pi-hole.net/guides/unbound/#what-does-this-guide-provide)
 
 ---
 
