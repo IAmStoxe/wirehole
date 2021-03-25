@@ -8,7 +8,24 @@ WireHole is a combination of WireGuard, PiHole, and Unbound in a docker-compose 
 
 ##### Optional Fully Automated Deployment on Oracle Cloud:
   - https://medium.com/@devinjaystokes/automating-the-deployment-of-your-forever-free-pihole-and-wireguard-server-dce581f71b7
-  
+ 
+## Author
+
+👤 **Devin Stokes**
+
+* Twitter: [@DevinStokes](https://twitter.com/DevinStokes)
+* Github: [@IAmStoxe](https://github.com/IAmStoxe)
+
+## 🤝 Contributing
+
+Contributions, issues and feature requests are welcome!<br />Feel free to check [issues page](https://github.com/IAmStoxe/wirehole/issue). 
+
+## Show your support
+
+Give a ⭐ if this project helped you!
+
+<a href="https://www.buymeacoffee.com/stoxe" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-orange.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+ 
 ---
 
 ### Quickstart
@@ -213,20 +230,3 @@ The templates used for server and peer confs are saved under /config/templates. 
 * [PiHole Official Site: What does this guide provide?](https://docs.pi-hole.net/guides/unbound/#what-does-this-guide-provide)
 
 ---
-
-## Author
-
-👤 **Devin Stokes**
-
-* Twitter: [@DevinStokes](https://twitter.com/DevinStokes)
-* Github: [@IAmStoxe](https://github.com/IAmStoxe)
-
-## 🤝 Contributing
-
-Contributions, issues and feature requests are welcome!<br />Feel free to check [issues page](https://github.com/IAmStoxe/wirehole/issue). 
-
-## Show your support
-
-Give a ⭐ if this project helped you!
-
-<a href="https://www.buymeacoffee.com/stoxe" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-orange.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
