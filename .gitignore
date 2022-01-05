@@ -2,4 +2,5 @@ wireguard/
 unbound/*
 etc-pihole/
 etc-dnsmasq.d/
+etc-pihole-updatelists/
 !unbound/unbound.conf
