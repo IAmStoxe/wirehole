@@ -55,7 +55,7 @@ services:
   pihole:
     depends_on: [unbound]
     container_name: pihole
-    image: jimaldon/pihole-updatelists:latest
+    image: jacklul/pihole:latest
     restart: unless-stopped
     hostname: pihole
     dns:
