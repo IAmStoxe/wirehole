@@ -1,0 +1,5 @@
+# Pi-hole's Lists Updater by Jack'lul
+# https://github.com/jacklul/pihole-updatelists
+
+58 3 * * 6   root   /usr/local/sbin/pihole-updatelists
+
