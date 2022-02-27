@@ -57,7 +57,7 @@ services:
     environment:
       TZ: "America/Los_Angeles"
       WEBPASSWORD: "password" # Set secure password for pihole web panel.
-      ServerIP: 10.1.0.100 # Internal IP of pihole
+      ServerIP: 10.2.0.100 # Internal IP of pihole
       PIHOLE_DNS_: 10.2.0.200 # Unbound IP
     # Volumes store your data between container upgrades
     volumes:
