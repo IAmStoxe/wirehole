@@ -35,18 +35,14 @@ services:
       - PEERS=1 # How many peers to generate for you (clients)
       - PEERDNS=10.2.0.100 # Set it to point to pihole
       - INTERNAL_SUBNET=10.6.0.0
-      
+      #- ALLOWEDIPS=10.2.0.0/24 #optional - Split tunnel for web panel and DNS traffic only  
     volumes:
       - ./wireguard:/config
       - /lib/modules:/lib/modules
     ports:
       - "51820:51820/udp"
-    dns:
-      - 10.2.0.100 # Points to pihole
-      - 10.2.0.200 # Points to unbound
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
-
     restart: unless-stopped
     networks:
       private_network:
@@ -58,19 +54,15 @@ services:
     image: pihole/pihole:latest
     restart: unless-stopped
     hostname: pihole
-    dns:
-      - 127.0.0.1
-      - 10.2.0.200 # Points to unbound
     environment:
       TZ: "America/Los_Angeles"
-      WEBPASSWORD: "" # Blank password - Can be whatever you want.
+      WEBPASSWORD: "password" # Set secure password for pihole web panel.
       ServerIP: 10.1.0.100 # Internal IP of pihole
-      DNS1: 10.2.0.200 # Unbound IP
-      DNS2: 10.2.0.200 # If we don't specify two, it will auto pick google.
+      PIHOLE_DNS_: 10.2.0.200 # Unbound IP
     # Volumes store your data between container upgrades
     volumes:
-      - "./etc-pihole/:/etc/pihole/"
-      - "./etc-dnsmasq.d/:/etc/dnsmasq.d/"
+      - "./pihole/etc-pihole/:/etc/pihole/"
+      - "./pihole/etc-dnsmasq.d/:/etc/dnsmasq.d/"
     # Recommended but not required (DHCP needs NET_ADMIN)
     #   https://github.com/pi-hole/docker-pi-hole#note-on-capabilities
     cap_add:
