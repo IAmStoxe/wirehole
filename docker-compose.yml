@@ -19,39 +19,6 @@ services:
       private_network:
         ipv4_address: 10.2.0.200
 
-  wireguard:
-    depends_on: [unbound, pihole]
-    image: linuxserver/wireguard
-    container_name: wireguard
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/Los_Angeles # Change to your timezone
-      - SERVERPORT=51820
-      #- SERVERURL=my.ddns.net #optional - For use with DDNS (Uncomment to use)
-      - PEERS=1 # How many peers to generate for you (clients)
-      - PEERDNS=10.2.0.100 # Set it to point to pihole
-      - INTERNAL_SUBNET=10.6.0.0
-      
-    volumes:
-      - ./wireguard:/config
-      - /lib/modules:/lib/modules
-    ports:
-      - "51820:51820/udp"
-    dns:
-      - 10.2.0.100 # Points to pihole
-      - 10.2.0.200 # Points to unbound
-    sysctls:
-      - net.ipv4.conf.all.src_valid_mark=1
-
-    restart: unless-stopped
-    networks:
-      private_network:
-        ipv4_address: 10.2.0.3
-
   pihole:
     depends_on: [unbound]
     container_name: pihole
@@ -63,8 +30,8 @@ services:
       - 10.2.0.200 # Points to unbound
     environment:
       TZ: "America/Los_Angeles"
-      WEBPASSWORD: "" # Blank password - Can be whatever you want.
-      ServerIP: 10.2.0.100 # Internal IP of pihole
+      WEBPASSWORD: "toor" # Can be whatever you want.
+      ServerIP: 10.1.0.100 # Internal IP of pihole
       DNS1: 10.2.0.200 # Unbound IP
       DNS2: 10.2.0.200 # If we don't specify two, it will auto pick google.
     # Volumes store your data between container upgrades
@@ -78,3 +45,36 @@ services:
     networks:
       private_network:
         ipv4_address: 10.2.0.100
+
+  # Based on https://github.com/IAmStoxe/wirehole/issues/43#issuecomment-951991774
+  wg-easy:
+    depends_on: [unbound, pihole]
+    image: weejewel/wg-easy:latest
+    container_name: wg-easy
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - WG_HOST=${IP:?IP=$$(hostname -I | cut -d' ' -f1) docker compose up -d}
+      - PASSWORD=toor
+      - WG_DEFAULT_DNS=10.2.0.100
+      - WG_ALLOWED_IPS=0.0.0.0/1, 128.0.0.0/1, ::/1, 8000::/1
+      # - WG_ALLOWED_IPS= 0.0.0.0/1, 10.8.0.0/24, 10.8.1.0/24, 128.0.0.0/2, 192.0.0.0/9, 192.128.0.0/11, 192.160.0.0/13, 192.168.1.0/24, 192.168.2.0/23, 192.168.4.0/22, 192.168.8.0/21, 192.168.16.0/20, 192.168.32.0/19, 192.168.64.0/18, 192.168.128.0/17, 192.169.0.0/16, 192.170.0.0/15, 192.172.0.0/14, 192.176.0.0/12, 192.192.0.0/10, 193.0.0.0/8, 194.0.0.0/7, 196.0.0.0/6, 200.0.0.0/5, 208.0.0.0/4, 224.0.0.0/3
+      # figure out what you want to allow and what to block
+      # https://www.procustodibus.com/blog/2021/03/wireguard-allowedips-calculator/
+    volumes:
+      - ./wireguard:/etc/wireguard
+    ports:
+      - "51820:51820/udp"
+      - "51821:51821"
+    dns:
+      - 10.2.0.100 # Points to pihole
+      - 10.2.0.200 # Points to unbound
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+
+    restart: unless-stopped
+    networks:
+      private_network:
+        ipv4_address: 10.2.0.3
