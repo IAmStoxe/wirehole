@@ -274,7 +274,19 @@ Providers they have the information for:
 5. DNS.WATCH
 6. Quad9
 7. CloudFlare DNS
+8. Custom
 
+> With custom, you'll choose your favorite DNS provider. If you care about Internet independence and privacy, we suggest having a look at the [OpenNIC DNS Project](https://servers.opennic.org/).
+
+Please add your custom DNS provider(s) in your customized `[docker-compose.yml](docker-compose.yml#L68)` as an [Optional Variable](https://github.com/pi-hole/docker-pi-hole/blob/master/README.md#optional-variables) or directly in Pi-hole's `setupVars.conf` with an example of NextDNS.io resolvers for IPv4 and IPv6:
+```
+PIHOLE_DNS_1=45.90.28.39
+PIHOLE_DNS_2=45.90.30.39
+PIHOLE_DNS_3=2a07:a8c0::75:86b2
+PIHOLE_DNS_4=2a07:a8c1::75:86b2
+```
+
+If you are also caring for **performance and reliability** of the DNS provider you choose, you might be interested in [dnsping_rrd](https://github.com/thomasmerz/dnsping_rrd) which monitors the average response times of DNS resolvers in RRD databases and simple HTML pages with PNG graphs. After some days you will have a solid base for choosing the fastest and most reliable for your internet connection.
 
 ---
 

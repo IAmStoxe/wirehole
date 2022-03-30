@@ -35,7 +35,7 @@ services:
       - PEERS=1 # How many peers to generate for you (clients)
       - PEERDNS=10.2.0.100 # Set it to point to pihole
       - INTERNAL_SUBNET=10.6.0.0
-      
+
     volumes:
       - ./wireguard:/config
       - /lib/modules:/lib/modules
@@ -65,8 +65,8 @@ services:
       TZ: "America/Los_Angeles"
       WEBPASSWORD: "" # Blank password - Can be whatever you want.
       ServerIP: 10.2.0.100 # Internal IP of pihole
-      DNS1: 10.2.0.200 # Unbound IP
-      DNS2: 10.2.0.200 # If we don't specify two, it will auto pick google.
+      PIHOLE_DNS_1: 10.2.0.200 # Unbound IP
+      PIHOLE_DNS_2: 10.2.0.200 # If we don't specify two, it will auto pick google.
     # Volumes store your data between container upgrades
     volumes:
       - "./etc-pihole/:/etc/pihole/"
