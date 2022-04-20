@@ -29,7 +29,7 @@ services:
       - 127.0.0.1
       - 10.2.0.200 # Points to unbound
     environment:
-      TZ: "America/Los_Angeles"
+      TZ: "Europe/Moscow"
       WEBPASSWORD: "CHANGE_ME" # Can be whatever you want.
       ServerIP: 10.1.0.100 # Internal IP of pihole
       DNS1: 10.2.0.200 # Unbound IP
