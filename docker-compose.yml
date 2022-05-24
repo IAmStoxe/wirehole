@@ -55,7 +55,7 @@ services:
       - NET_ADMIN
       - SYS_MODULE
     environment:
-      - WG_HOST=${IP:?IP=$$(hostname -I | cut -d' ' -f1) docker compose up -d}
+      - WG_HOST=${IP:?IP=$$(hostname -I | cut -d' ' -f1) docker compose up -d --build}
       - PASSWORD=CHANGE_ME93a3027594175ca45f1043092936d32f652fafcb
       - WG_DEFAULT_DNS=10.2.0.100
       - WG_ALLOWED_IPS=0.0.0.0/0, ::/0
