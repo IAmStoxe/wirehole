@@ -1,5 +1,5 @@
 ## What is this?
-WireHole fork that includes [PiHole Updatelists](https://github.com/jacklul/pihole-updatelists) that run's on an arm/v7 Raspberry Pi board.
+[WireHole](https://github.com/IAmStoxe/wirehole) fork that includes [PiHole Updatelists](https://github.com/jacklul/pihole-updatelists) that run's on an arm/v7 Raspberry Pi board.
 
 ## Author
 
