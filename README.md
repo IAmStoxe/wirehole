@@ -381,3 +381,7 @@ Both of these approaches have positives and negatives however their setup is out
 ###### Shout out to LinuxServer.io for their documentation and maintenance of the incredible Wireguard image.
 
 --- 
+
+### Infrastructure model
+
+![Insfrastructure model](.infragenie/infrastructure_model.png)
