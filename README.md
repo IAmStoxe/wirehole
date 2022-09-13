@@ -20,7 +20,6 @@ Give a ⭐ if this project helped you!
  
 ---
 
-
 ### Supported Architectures
 
 The Wireguard image supports multiple architectures such as `x86-64`, `arm64` and `armhf`. Linuxserver - who makes the wireguard image we use - utilises the docker manifest for multi-platform awareness. 
@@ -39,55 +38,25 @@ Simply pulling `linuxserver/wireguard` should retrieve the correct image for you
 | arm64 | arm64v8-latest |
 | armhf | arm32v7-latest |
 
-
 ##### Optional - Fully Automated Deployment on Oracle Cloud:
   - https://medium.com/@devinjaystokes/automating-the-deployment-of-your-forever-free-pihole-and-wireguard-server-dce581f71b7
- 
+
+## Docker Default Setting:
+| Container          | IP         |
+|--------------------|------------|
+| PiHole             | 10.2.0.100 |
+| Unbound            | 10.2.0.200 |
+| Wireguard IP range | 10.6.0.0/24|
 
 ### Quickstart
 To get started all you need to do is clone the repository and spin up the containers.
+Follow docker's [documentation](https://docs.docker.com/engine/install/) on how to setup docker engine and compose.
 
 ```bash
 git clone https://github.com/IAmStoxe/wirehole.git
 cd wirehole
-docker-compose up
+docker compose up
 ```
-### Full Setup
-```bash
-#!/bin/bash
-
-# Prereqs and docker
-sudo apt-get update &&
-    sudo apt-get install -yqq \
-        curl \
-        git \
-        apt-transport-https \
-        ca-certificates \
-        gnupg-agent \
-        software-properties-common
-
-# Install Docker repository and keys
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-
-sudo add-apt-repository \
-    "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-        $(lsb_release -cs) \
-        stable" &&
-    sudo apt-get update &&
-    sudo apt-get install docker-ce docker-ce-cli containerd.io -yqq
-
-# docker-compose
-sudo curl -L "https://github.com/docker/compose/releases/download/1.26.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose &&
-    sudo chmod +x /usr/local/bin/docker-compose &&
-    sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
-
-# wirehole
-git clone https://github.com/IAmStoxe/wirehole.git &&
-    cd wirehole &&
-    docker-compose up
-
-```
-
 
 Within the output of the terminal will be QR codes you can (if you choose) to setup it WireGuard on your phone.
 
@@ -136,7 +105,6 @@ wireguard    | [cont-init.d] 99-custom-scripts: exited 0.
 wireguard    | [cont-init.d] done.
 wireguard    | [services.d] starting services
 ```
-
 ---
 
 ## Recommended configuration / Split tunnel:
