@@ -63,10 +63,11 @@ services:
       - 10.2.0.200 # Points to unbound
     environment:
       TZ: "America/Los_Angeles"
+      TEMPERATUREUNIT: "c"
+      WEBTHEME: "default-dark"
       WEBPASSWORD: "" # Blank password - Can be whatever you want.
-      ServerIP: 10.2.0.100 # Internal IP of pihole
-      DNS1: 10.2.0.200 # Unbound IP
-      DNS2: 10.2.0.200 # If we don't specify two, it will auto pick google.
+      FTLCONF_LOCAL_IPV4: 10.2.0.100 # Internal IP of pihole
+      PIHOLE_DNS_: "10.2.0.200;10.2.0.200" # Unbound IP. If we don't specify two, it will auto pick google.
     # Volumes store your data between container upgrades
     volumes:
       - "./etc-pihole/:/etc/pihole/"
