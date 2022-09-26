@@ -10,7 +10,7 @@
 
 ## 🤝 Contributing
 
-Contributions, issues and feature requests are welcome!<br />Feel free to check [issues page](https://github.com/IAmStoxe/wirehole/issue). 
+Contributions, issues and feature requests are welcome!<br />Feel free to check [issues page](https://github.com/IAmStoxe/wirehole/issues). 
 
 ## Show your support
 
@@ -381,3 +381,8 @@ Both of these approaches have positives and negatives however their setup is out
 ###### Shout out to LinuxServer.io for their documentation and maintenance of the incredible Wireguard image.
 
 --- 
+
+### Infrastructure model
+
+![Insfrastructure model](.infragenie/infrastructure_model.png)
+
