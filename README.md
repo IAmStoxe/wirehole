@@ -1,55 +1,35 @@
 ## What is this?
-WireHole is a combination of WireGuard, PiHole, and Unbound in a docker-compose project with the intent of enabling users to quickly and easily create and deploy a personally managed full or split-tunnel WireGuard VPN with ad blocking capabilities (via Pihole), and DNS caching with additional privacy options (via Unbound). 
+WireHole is a combination of WireGuard, PiHole, and Unbound in a docker-compose project with the intent of enabling users to quickly and easily create and deploy a personally managed full or split-tunnel WireGuard VPN with ad blocking capabilities (via Pihole), and DNS caching with additional privacy options (via Unbound).
+
+## Fork difference
+
+* .env file support
+* 
+
+## Fork author
+
+👤 **kamartem** [@kamartem](https://github.com/kamartem)
+
+<a href="https://www.buymeacoffee.com/kamartem" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-orange.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
 ## Author
 
-👤 **Devin Stokes**
-
-* Twitter: [@DevinStokes](https://twitter.com/DevinStokes)
-* Github: [@IAmStoxe](https://github.com/IAmStoxe)
-
-## 🤝 Contributing
-
-Contributions, issues and feature requests are welcome!<br />Feel free to check [issues page](https://github.com/IAmStoxe/wirehole/issues). 
-
-## Show your support
-
-Give a ⭐ if this project helped you!
+👤 **Devin Stokes** [@IAmStoxe](https://github.com/IAmStoxe)
 
 <a href="https://www.buymeacoffee.com/stoxe" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-orange.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
- 
+
 ---
-
-
-### Supported Architectures
-
-The Wireguard image supports multiple architectures such as `x86-64`, `arm64` and `armhf`. Linuxserver - who makes the wireguard image we use - utilises the docker manifest for multi-platform awareness. 
-
-More information is available from docker [here](https://github.com/docker/distribution/blob/master/docs/spec/manifest-v2-2.md#manifest-list) and LinuxServer's announcement [here](https://blog.linuxserver.io/2019/02/21/the-lsio-pipeline-project/).
-
-Simply pulling `linuxserver/wireguard` should retrieve the correct image for your arch, but you can also pull specific arch images via tags 
-
-> *This is the default configuration in this project*
-
-**The architectures supported by this image are:**
-
-| Architecture | Tag |
-| :----: | --- |
-| x86-64 | amd64-latest |
-| arm64 | arm64v8-latest |
-| armhf | arm32v7-latest |
-
-
-##### Optional - Fully Automated Deployment on Oracle Cloud:
-  - https://medium.com/@devinjaystokes/automating-the-deployment-of-your-forever-free-pihole-and-wireguard-server-dce581f71b7
- 
 
 ### Quickstart
 To get started all you need to do is clone the repository and spin up the containers.
 
 ```bash
-git clone https://github.com/IAmStoxe/wirehole.git
+git clone https://github.com/kamartem/wirehole.git
 cd wirehole
+cp .env.example .env
+
+# Fill .env file with your specific values ans start services
+
 docker-compose up
 ```
 ### Full Setup
@@ -57,37 +37,44 @@ docker-compose up
 #!/bin/bash
 
 # Prereqs and docker
-sudo apt-get update &&
-    sudo apt-get install -yqq \
-        curl \
-        git \
-        apt-transport-https \
-        ca-certificates \
-        gnupg-agent \
-        software-properties-common
+sudo apt update
+
+# prerequisite packages
+sudo apt install apt-transport-https ca-certificates curl software-properties-common
 
 # Install Docker repository and keys
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
 
-sudo add-apt-repository \
-    "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-        $(lsb_release -cs) \
-        stable" &&
-    sudo apt-get update &&
-    sudo apt-get install docker-ce docker-ce-cli containerd.io -yqq
+# Add the Docker repository to APT sources:
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# docker-compose
-sudo curl -L "https://github.com/docker/compose/releases/download/1.26.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose &&
-    sudo chmod +x /usr/local/bin/docker-compose &&
-    sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
+# Install Docker
+sudo apt-get update && sudo apt-get install docker-ce -yqq
+
+# If you want to avoid typing sudo whenever you run the docker command, add your username to the docker group
+sudo usermod -aG docker ${USER}
+
+# Apply the new group membership 
+su - ${USER}
+
+# Download compose & make it executable
+mkdir -p ~/.docker/cli-plugins/
+curl -SL https://github.com/docker/compose/releases/download/v2.14.2/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose
+chmod +x ~/.docker/cli-plugins/docker-compose
+
+#  Verify that the installation was successful
+docker compose version
 
 # wirehole
-git clone https://github.com/IAmStoxe/wirehole.git &&
-    cd wirehole &&
-    docker-compose up
+git clone https://github.com/kamartem/wirehole.git
+cd wirehole
+cp .env.example .env
+
+# Fill .env file with your specific values ans start services
+
+docker-compose up
 
 ```
-
 
 Within the output of the terminal will be QR codes you can (if you choose) to setup it WireGuard on your phone.
 
