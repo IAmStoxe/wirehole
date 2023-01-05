@@ -29,10 +29,10 @@ services:
     environment:
       PUID: 1000
       PGID: 1000
-      TZ: "${TIMEZONE:-America/Los_Angeles}"
+      TZ: "${TIMEZONE}"
       SERVERPORT: 51820
       #- SERVERURL=my.ddns.net #optional - For use with DDNS (Uncomment to use)
-      PEERS: "${PEERS:-1}" # How many peers to generate for you (clients)
+      PEERS: "${PEERS}"
       PEERDNS: 10.2.0.100 # Set it to point to pihole
       INTERNAL_SUBNET: 10.6.0.0
     volumes:
@@ -60,8 +60,8 @@ services:
       - 127.0.0.1
       - 10.2.0.200 # Points to unbound
     environment:
-      TZ: "${TIMEZONE:-America/Los_Angeles}"
-      WEBPASSWORD: "" # Blank password - Can be whatever you want.
+      TZ: "${TIMEZONE}"
+      WEBPASSWORD: "${PIHOLE_PASSWORD}"
       ServerIP: 10.2.0.100 # Internal IP of pihole
       DNS1: 10.2.0.200 # Unbound IP
       DNS2: 10.2.0.200 # If we don't specify two, it will auto pick google.

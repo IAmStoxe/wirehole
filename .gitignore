@@ -3,6 +3,7 @@
 
 # Env file
 .env
+scripts/.env.vars
 
 wireguard/
 unbound/*
