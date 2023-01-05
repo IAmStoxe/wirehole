@@ -9,7 +9,7 @@ networks:
 
 services:
   unbound:
-    image: mvance/unbound:latest
+    image: mvance/unbound:1.12.0
     container_name: unbound
     hostname: unbound
     restart: unless-stopped
