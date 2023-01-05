@@ -1,3 +1,10 @@
+# Editor & OS
+.idea
+
+# Env file
+.env
+scripts/.env.vars
+
 wireguard/
 unbound/*
 etc-pihole/

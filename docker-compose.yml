@@ -9,10 +9,10 @@ networks:
 
 services:
   unbound:
-    image: "mvance/unbound:latest"
+    image: mvance/unbound:1.12.0
     container_name: unbound
+    hostname: unbound
     restart: unless-stopped
-    hostname: "unbound"
     volumes:
       - "./unbound:/opt/unbound/etc/unbound/"
     networks:
@@ -20,22 +20,21 @@ services:
         ipv4_address: 10.2.0.200
 
   wireguard:
-    depends_on: [unbound, pihole]
-    image: linuxserver/wireguard
+    image: linuxserver/wireguard:latest
     container_name: wireguard
+    depends_on: [unbound, pihole]
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/Los_Angeles # Change to your timezone
-      - SERVERPORT=51820
+      PUID: 1000
+      PGID: 1000
+      TZ: "${TIMEZONE}"
+      SERVERPORT: 51820
       #- SERVERURL=my.ddns.net #optional - For use with DDNS (Uncomment to use)
-      - PEERS=1 # How many peers to generate for you (clients)
-      - PEERDNS=10.2.0.100 # Set it to point to pihole
-      - INTERNAL_SUBNET=10.6.0.0
-      
+      PEERS: "${PEERS}"
+      PEERDNS: 10.2.0.100 # Set it to point to pihole
+      INTERNAL_SUBNET: 10.6.0.0
     volumes:
       - ./wireguard:/config
       - /lib/modules:/lib/modules
@@ -46,28 +45,26 @@ services:
       - 10.2.0.200 # Points to unbound
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
-
     restart: unless-stopped
     networks:
       private_network:
         ipv4_address: 10.2.0.3
 
   pihole:
-    depends_on: [unbound]
-    container_name: pihole
     image: pihole/pihole:latest
-    restart: unless-stopped
+    container_name: pihole
     hostname: pihole
+    depends_on: [unbound]
+    restart: unless-stopped
     dns:
       - 127.0.0.1
       - 10.2.0.200 # Points to unbound
     environment:
-      TZ: "America/Los_Angeles"
-      WEBPASSWORD: "" # Blank password - Can be whatever you want.
+      TZ: "${TIMEZONE}"
+      WEBPASSWORD: "${PIHOLE_PASSWORD}"
       ServerIP: 10.2.0.100 # Internal IP of pihole
       DNS1: 10.2.0.200 # Unbound IP
       DNS2: 10.2.0.200 # If we don't specify two, it will auto pick google.
-    # Volumes store your data between container upgrades
     volumes:
       - "./etc-pihole/:/etc/pihole/"
       - "./etc-dnsmasq.d/:/etc/dnsmasq.d/"
