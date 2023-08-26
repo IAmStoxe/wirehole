@@ -18,6 +18,8 @@ services:
     networks:
       private_network:
         ipv4_address: 10.2.0.200
+    cap_add:
+      - NET_ADMIN
 
   wireguard:
     depends_on: [unbound, pihole]
@@ -29,10 +31,10 @@ services:
     environment:
       - PUID=1000
       - PGID=1000
-      - TZ=America/Los_Angeles # Change to your timezone
+      - TZ=Myanmar/Yangon # Change to your timezone
       - SERVERPORT=51820
       #- SERVERURL=my.ddns.net #optional - For use with DDNS (Uncomment to use)
-      - PEERS=1 # How many peers to generate for you (clients)
+      - PEERS=5 # How many peers to generate for you (clients)
       - PEERDNS=10.2.0.100 # Set it to point to pihole
       - INTERNAL_SUBNET=10.6.0.0
       
