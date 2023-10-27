@@ -92,6 +92,8 @@ The web panel for WG-Easy is a user-friendly interface that allows you to manage
 - **Configuration Export**: Download client configurations directly.
 - **Real-time Statistics**: Monitor connected clients and data usage.
 
+![](https://i.imgur.com/WoIt6rP.png)
+
 ---
 
 ## Access PiHole
