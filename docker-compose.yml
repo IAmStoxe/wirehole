@@ -19,34 +19,23 @@ services:
       private_network:
         ipv4_address: 10.2.0.200
 
-  wireguard:
-    depends_on: [unbound, pihole]
-    image: linuxserver/wireguard
-    container_name: wireguard
+  wg-easy:
+    container_name: wg-easy
+    image: weejewel/wg-easy
+    environment:
+      - WG_HOST=REPLACE_ME_WITH_YOUR_PUBLIC_IP
+      - PASSWORD=YOUR_ADMIN_PASSWORD
+    volumes:
+      - "./wireguard:/etc/wireguard"
+    ports:
+      - "51820:51820/udp"
+      - "51821:51821/tcp"
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/Los_Angeles # Change to your timezone
-      - SERVERPORT=51820
-      #- SERVERURL=my.ddns.net #optional - For use with DDNS (Uncomment to use)
-      - PEERS=1 # How many peers to generate for you (clients)
-      - PEERDNS=10.2.0.100 # Set it to point to pihole
-      - INTERNAL_SUBNET=10.6.0.0
-      
-    volumes:
-      - ./wireguard:/config
-      - /lib/modules:/lib/modules
-    ports:
-      - "51820:51820/udp"
-    dns:
-      - 10.2.0.100 # Points to pihole
-      - 10.2.0.200 # Points to unbound
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
-
+      - net.ipv4.ip_forward=1
     restart: unless-stopped
     networks:
       private_network:
