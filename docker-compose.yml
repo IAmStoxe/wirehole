@@ -18,6 +18,8 @@ services:
     networks:
       private_network:
         ipv4_address: 10.2.0.200
+    cap_add:
+      - NET_ADMIN
 
   wg-easy:
     container_name: wg-easy
