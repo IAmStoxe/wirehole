@@ -27,6 +27,7 @@ services:
     environment:
       - WG_HOST=REPLACE_ME_WITH_YOUR_PUBLIC_IP
       - PASSWORD=YOUR_ADMIN_PASSWORD
+      - WG_DEFAULT_DNS=10.2.0.100
     volumes:
       - "./wireguard:/etc/wireguard"
     ports:
