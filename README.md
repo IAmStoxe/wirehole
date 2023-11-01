@@ -1,6 +1,4 @@
-Certainly! Based on the provided Docker Compose and environment configuration, here is the revised end-to-end documentation for the `README.md` file:
 
-```markdown
 ## What is this?
 
 WireHole is a docker-compose project that combines WireGuard, PiHole, and Unbound to create a full or split-tunnel VPN that is easy to deploy and manage. This setup allows for a VPN with ad-blocking via PiHole and enhanced DNS privacy and caching through Unbound.
