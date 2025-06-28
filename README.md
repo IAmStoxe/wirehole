@@ -53,9 +53,6 @@ cd wirehole
 cp .env.example .env
 nano .env  # Or use any text editor of your choice to edit the .env file
 
-# Replace the public IP placeholder in the docker-compose.yml
-sed -i "s/REPLACE_ME_WITH_YOUR_PUBLIC_IP/$(curl -s ifconfig.me)/g" docker-compose.yml
-
 # Start the Docker containers
 docker compose up
 ```
