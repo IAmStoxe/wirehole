@@ -1,25 +1,53 @@
-# This workflow warns and then closes issues and PRs that have had no activity for a specified amount of time.
+# This workflow marks an issue or a pull request without activity. It closes
+# the item later if the activity does not start again.
 #
-# You can adjust the behavior by modifying this file.
-# For more information, see:
+# Read the documentation here:
 # https://github.com/actions/stale
+
 name: Mark stale issues and pull requests
 
-on: workflow_dispatch
+on:
+  schedule:
+    # Run at 01:30 UTC each day.
+    - cron: '30 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
 
 jobs:
   stale:
-
     runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      pull-requests: write
-
     steps:
-    - uses: actions/stale@v5
-      with:
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
-        stale-issue-message: 'Stale issue message'
-        stale-pr-message: 'Stale pull request message'
-        stale-issue-label: 'no-issue-activity'
-        stale-pr-label: 'no-pr-activity'
+      - uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+          days-before-stale: 60
+          days-before-close: 14
+
+          stale-issue-label: no-issue-activity
+          stale-pr-label: no-pr-activity
+
+          stale-issue-message: >
+            This issue has no activity for 60 days. It gets the label
+            "no-issue-activity". Write a comment if the issue continues.
+            The workflow closes this issue in 14 days without a comment.
+
+          stale-pr-message: >
+            This pull request has no activity for 60 days. It gets the label
+            "no-pr-activity". Write a comment if the work continues.
+            The workflow closes this pull request in 14 days without a comment.
+
+          close-issue-message: >
+            This issue had no activity for 74 days. The workflow closes it
+            now. Open a new issue if the problem continues.
+
+          close-pr-message: >
+            This pull request had no activity for 74 days. The workflow
+            closes it now. Open it again if you want to continue the work.
+
+          # Keep these items open. They need a decision or more time.
+          exempt-issue-labels: pinned,security,help wanted,enhancement
+          exempt-pr-labels: pinned,security,work in progress

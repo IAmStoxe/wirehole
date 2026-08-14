@@ -1,0 +1,183 @@
+name: CI
+
+# This workflow tests the stack. It runs on each push and on each pull
+# request. It also runs one time each week. The weekly run finds a problem
+# in a new image version.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  schedule:
+    # Run at 06:00 UTC on Monday.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Check the files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the syntax of the shell scripts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck scripts/*.sh
+
+      - name: Check that the compose file is valid
+        run: |
+          cp .env.example .env
+          # Give a value to each necessary variable. The compose file stops
+          # without these values.
+          sed -i 's|^VPN_HOST=.*|VPN_HOST=192.0.2.1|' .env
+          sed -i 's|^PIHOLE_PASSWORD=.*|PIHOLE_PASSWORD=ci-test-password|' .env
+          sed -i 's|^WG_EASY_PASSWORD=.*|WG_EASY_PASSWORD=ci-test-password|' .env
+          docker compose config --quiet
+          COMPOSE_PROFILES=wireguard docker compose config --quiet
+
+      - name: Check that a missing password stops the stack
+        run: |
+          printf 'VPN_HOST=192.0.2.1\n' > empty.env
+          if docker compose --env-file empty.env config --quiet 2> error.log; then
+            echo "ERROR: The compose file started without a password."
+            exit 1
+          fi
+          grep -q 'PIHOLE_PASSWORD' error.log
+          echo "OK: The compose file needs a password."
+
+      - name: Check that no secret is in the repository
+        run: |
+          # The file .env holds the passwords. Git must ignore it.
+          git check-ignore .env > /dev/null || {
+            echo "ERROR: Git does not ignore the file .env."
+            exit 1
+          }
+          git check-ignore data > /dev/null || {
+            echo "ERROR: Git does not ignore the directory data."
+            exit 1
+          }
+          echo "OK: Git ignores the secret files."
+
+  test:
+    name: Start the stack and test the DNS
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [wg-easy, wireguard]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make the configuration file
+        run: |
+          cp .env.example .env
+          sed -i 's|^VPN_HOST=.*|VPN_HOST=192.0.2.1|' .env
+          sed -i 's|^PIHOLE_PASSWORD=.*|PIHOLE_PASSWORD=ci-test-password|' .env
+          sed -i 's|^WG_EASY_PASSWORD=.*|WG_EASY_PASSWORD=ci-test-password|' .env
+          sed -i 's|^COMPOSE_PROFILES=.*|COMPOSE_PROFILES=${{ matrix.profile }}|' .env
+          # The runner uses port 53 for its own resolver. Move the test to
+          # another network to prevent a conflict.
+          sed -i 's|^WEB_BIND_ADDRESS=.*|WEB_BIND_ADDRESS=127.0.0.1|' .env
+
+      - name: Start the stack
+        run: docker compose up -d --wait --wait-timeout 180
+
+      - name: Show the state of the containers
+        if: always()
+        run: docker compose ps
+
+      - name: Test the name resolution through Pi-hole
+        run: |
+          for i in $(seq 1 10); do
+            result=$(docker exec wirehole-pihole dig +short +time=5 example.com @127.0.0.1 || true)
+            if [ -n "$result" ]; then
+              echo "OK: Pi-hole resolved example.com to $result"
+              exit 0
+            fi
+            echo "Attempt $i gave no answer. The test waits 5 seconds."
+            sleep 5
+          done
+          echo "ERROR: Pi-hole did not resolve the name."
+          exit 1
+
+      - name: Test the recursive resolver
+        run: |
+          result=$(docker exec wirehole-pihole dig +short +time=8 wikipedia.org @10.2.0.200)
+          test -n "$result"
+          echo "OK: Unbound resolved wikipedia.org to $result"
+
+      - name: Test the DNSSEC validation
+        run: |
+          # A signed domain must give the flag "ad".
+          flags=$(docker exec wirehole-pihole dig +dnssec +time=8 cloudflare.com @10.2.0.200 | grep '^;; flags')
+          echo "$flags" | grep -q ' ad' || {
+            echo "ERROR: Unbound did not validate a signed domain."
+            echo "$flags"
+            exit 1
+          }
+          echo "OK: Unbound validated a signed domain."
+
+          # A domain with a bad signature must give SERVFAIL.
+          status=$(docker exec wirehole-pihole dig +time=8 dnssec-failed.org @10.2.0.200 | grep 'status:')
+          echo "$status" | grep -q 'SERVFAIL' || {
+            echo "ERROR: Unbound accepted a bad signature."
+            echo "$status"
+            exit 1
+          }
+          echo "OK: Unbound refused a bad signature."
+
+      - name: Test the advertisement blocking
+        run: |
+          result=$(docker exec wirehole-pihole dig +short +time=5 doubleclick.net @127.0.0.1)
+          test "$result" = "0.0.0.0"
+          echo "OK: Pi-hole blocked doubleclick.net"
+
+      - name: Test the web interfaces
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:8080/admin/)
+          echo "Pi-hole answered with HTTP $code"
+          test "$code" -lt 500
+
+          if [ "${{ matrix.profile }}" = "wg-easy" ]; then
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:51821/)
+            echo "wg-easy answered with HTTP $code"
+            test "$code" -lt 500
+          fi
+
+      - name: Test that port 53 is not public
+        run: |
+          # The stack must not publish the DNS port. An open resolver is
+          # dangerous.
+          if docker compose ps --format '{{.Ports}}' | grep -qE '0\.0\.0\.0:53|:::53'; then
+            echo "ERROR: The stack publishes port 53 to all addresses."
+            docker compose ps --format '{{.Name}}: {{.Ports}}'
+            exit 1
+          fi
+          echo "OK: The stack does not publish port 53."
+
+      - name: Test that the VPN interface works
+        run: |
+          if [ "${{ matrix.profile }}" = "wg-easy" ]; then
+            docker exec wirehole-wg-easy wg show | grep -q 'interface:'
+          else
+            docker exec wirehole-wireguard wg show | grep -q 'interface:'
+            # The service must write a configuration file for the client.
+            # Read the file in the container. The files on the host belong
+            # to the user of the variable PUID.
+            docker exec wirehole-wireguard cat /config/peer1/peer1.conf \
+              | grep -q '^DNS = 10.2.0.100'
+          fi
+          echo "OK: The VPN interface works."
+
+      - name: Read the logs after a failure
+        if: failure()
+        run: docker compose logs --tail 100
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose --profile wg-easy --profile wireguard down -v

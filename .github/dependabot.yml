@@ -1,0 +1,18 @@
+# Dependabot looks for new versions and opens a pull request.
+#
+# NOTE: The stack sets the image versions in the file ".env", and not in the
+# file "docker-compose.yml". Dependabot cannot read the file ".env".
+# Therefore Dependabot updates the GitHub Actions only. The workflow "CI"
+# runs each week and finds a problem with a new image version.
+# Read the file README.md for the manual update procedure.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    labels:
+      - dependencies
