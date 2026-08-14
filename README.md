@@ -742,6 +742,20 @@ that connects the first device and fails on the second is a common fault. For
 every client it checks the handshake, traffic through the tunnel, DNS through
 Pi-hole, ad blocking, and reaching the internet.
 
+The test connects over three different paths, because each one can fail on
+its own:
+
+- From a Docker network, through the gateway.
+- From the address of this server on the local network. This is the path
+  that a phone on your Wi-Fi uses.
+- From the network of the server itself, and not from a container. This
+  proves that the published port answers a normal program on the machine.
+
+The last test makes a WireGuard interface on the server for a few seconds.
+It routes only the VPN network, never all traffic, so it cannot interrupt
+your connection. The test removes the interface again and then checks that
+the interface is gone.
+
 The test never touches your stack, your file `.env`, or your directory
 `./data`. It uses its own directory, network, and ports.
 

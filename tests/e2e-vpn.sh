@@ -160,18 +160,21 @@ start_stack() {
 #   $3 = the address of the server inside the tunnel
 # ---------------------------------------------------------------------------
 connect_and_test_client() {
-    local label="$1" conf="$2" server_vpn_ip="$3"
+    local label="$1" conf="$2" server_vpn_ip="$3" endpoint="${4:-}"
     local name="wirehole-e2e-client-$$-$(tr -dc 'a-z0-9' <<< "$label" | head -c 12)"
     CLIENTS+=("$name")
 
     head2 "Client '$label'"
 
-    # The client reaches the server through the Docker gateway. This is the
-    # same path that a phone on your Wi-Fi uses to reach the server.
-    local gateway
-    gateway="$(docker network inspect bridge -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2> /dev/null)"
-    [[ -z $gateway ]] && gateway="172.17.0.1"
-    conf="$(sed -E "s|^ *Endpoint *=.*|Endpoint = ${gateway}:${TEST_VPN_PORT}|" <<< "$conf")"
+    # By default the client reaches the server through the Docker gateway.
+    # The caller can give another address, such as the address of this
+    # server on the local network.
+    if [[ -z $endpoint ]]; then
+        endpoint="$(docker network inspect bridge -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2> /dev/null)"
+        [[ -z $endpoint ]] && endpoint="172.17.0.1"
+    fi
+    info "$label: connects to ${endpoint}:${TEST_VPN_PORT}"
+    conf="$(sed -E "s|^ *Endpoint *=.*|Endpoint = ${endpoint}:${TEST_VPN_PORT}|" <<< "$conf")"
 
     docker rm -f "$name" > /dev/null 2>&1
     # The client runs with full rights, like a real phone that controls its
@@ -249,6 +252,108 @@ connect_and_test_client() {
 
     docker rm -f "$name" > /dev/null 2>&1
     return 0
+}
+
+# ---------------------------------------------------------------------------
+# Find the address of this server on the local network. A phone on your
+# Wi-Fi uses this address to reach the server.
+# ---------------------------------------------------------------------------
+lan_address() {
+    ip -4 route get 1.1.1.1 2> /dev/null \
+        | awk '{for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit }}'
+}
+
+# ---------------------------------------------------------------------------
+# Connect a client from the network of this computer, and not from a Docker
+# network. The container shares the network of the host, so the connection
+# starts in the same place as a connection from any program on this server.
+#
+# This test uses a narrow AllowedIPs value on purpose. It routes only the VPN
+# networks into the tunnel. A full tunnel would move the default route of
+# this computer, and that would interrupt your other work.
+# ---------------------------------------------------------------------------
+connect_host_client() {
+    local conf="$1" server_vpn_ip="$2" endpoint="$3"
+    local iface="whe2e0"
+    local name="wirehole-e2e-host-$$"
+
+    head2 "A client on the network of this computer"
+
+    if ip link show "$iface" > /dev/null 2>&1; then
+        bad "The interface $iface exists already. The test does not touch it."
+        return 1
+    fi
+
+    conf="$(sed -E "s|^ *Endpoint *=.*|Endpoint = ${endpoint}:${TEST_VPN_PORT}|" <<< "$conf")"
+    # Route only the network of the VPN clients into the tunnel.
+    # The Docker network of the stack must stay out of this list. This
+    # computer already has a direct route to it, and a second route for the
+    # same network fails with "File exists".
+    conf="$(sed -E "s|^ *AllowedIPs *=.*|AllowedIPs = 10.8.0.0/24, 10.98.13.0/24|" <<< "$conf")"
+    conf="$(sed -E "/^ *DNS *=/d" <<< "$conf")"
+
+    CLIENTS+=("$name")
+    docker run -d --name "$name" --network host --privileged \
+        -v /lib/modules:/lib/modules:ro \
+        --entrypoint sleep alpine:3.20 infinity > /dev/null 2>&1
+
+    if ! docker exec "$name" apk add --no-cache \
+        wireguard-tools iproute2 iptables bind-tools > /dev/null 2>&1; then
+        bad "Could not install the client tools."
+        docker rm -f "$name" > /dev/null 2>&1
+        return 1
+    fi
+
+    docker exec -i "$name" sh -c "cat > /etc/wireguard/${iface}.conf" <<< "$conf"
+
+    if docker exec "$name" wg-quick up "$iface" > /tmp/e2e-hostwg.log 2>&1; then
+        ok "The interface started on this computer, not in a Docker network"
+    else
+        bad "The interface did not start on this computer"
+        tail -5 /tmp/e2e-hostwg.log
+        docker rm -f "$name" > /dev/null 2>&1
+        return 1
+    fi
+
+    local handshake=0
+    for _ in $(seq 1 15); do
+        docker exec "$name" ping -c1 -W2 "$server_vpn_ip" > /dev/null 2>&1
+        if [[ "$(docker exec "$name" wg show "$iface" latest-handshakes 2> /dev/null | awk '{print $2}')" != "0" ]]; then
+            handshake=1
+            break
+        fi
+        sleep 2
+    done
+
+    if [[ $handshake -eq 1 ]]; then
+        ok "The handshake succeeded from this computer"
+    else
+        bad "No handshake from this computer"
+    fi
+
+    if docker exec "$name" ping -c2 -W3 "$server_vpn_ip" > /dev/null 2>&1; then
+        ok "Traffic passes through the tunnel from this computer"
+    else
+        bad "No traffic through the tunnel from this computer"
+    fi
+
+    # This test does not send DNS through the tunnel. This computer already
+    # has a direct route to the Docker network of Pi-hole, so a DNS answer
+    # would not prove that the tunnel carried it. The client tests above
+    # cover DNS through the tunnel.
+    info "DNS through the tunnel is covered by the client tests above."
+
+    # Always remove the interface. It lives on this computer, not in a
+    # container, so it must not stay behind.
+    docker exec "$name" wg-quick down "$iface" > /dev/null 2>&1
+    docker exec "$name" ip link del "$iface" > /dev/null 2>&1
+    docker rm -f "$name" > /dev/null 2>&1
+
+    if ip link show "$iface" > /dev/null 2>&1; then
+        bad "The interface $iface stayed on this computer. Remove it with: sudo ip link del $iface"
+    else
+        ok "The test removed the interface from this computer"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -346,6 +451,7 @@ for c in d:
     local server_ip
     server_ip="$(awk '{print $3}' <<< "$ids" | head -1 | awk -F. '{print $1"."$2"."$3".1"}')"
 
+    local first_conf=""
     while read -r id cname _addr; do
         [[ -z $id ]] && continue
         local conf
@@ -356,8 +462,42 @@ for c in d:
             bad "Could not download the configuration for '$cname'"
             continue
         fi
+        [[ -z $first_conf ]] && first_conf="$conf"
         connect_and_test_client "$cname" "$conf" "$server_ip"
     done <<< "$ids"
+
+    # A phone on your Wi-Fi does not use the Docker gateway. It uses the
+    # address of this server on the local network. Test that path too,
+    # because it proves that the published port answers on a real interface.
+    local lan
+    lan="$(lan_address)"
+    if [[ -n $lan && -n $first_conf ]]; then
+        head2 "Reach the server on the local network ($lan)"
+        code="$(curl -s -b "$jar" -o /tmp/e2e-create.json -w '%{http_code}' --max-time 15 \
+            -X POST "$base/api/client" -H 'Content-Type: application/json' \
+            -d '{"name":"wifi","expiresAt":null}')"
+        local wifi_conf=""
+        if [[ $code == "200" || $code == "201" ]]; then
+            local wifi_id
+            wifi_id="$(curl -s -b "$jar" --max-time 15 "$base/api/client" \
+                | python3 -c "
+import json,sys
+for c in json.load(sys.stdin):
+    if c.get('name') == 'wifi':
+        print(c.get('id',''))
+        break
+" 2> /dev/null)"
+            [[ -n $wifi_id ]] && wifi_conf="$(curl -s -b "$jar" --max-time 15 "$base/api/client/${wifi_id}/configuration")"
+        fi
+        if [[ -n $wifi_conf ]]; then
+            connect_and_test_client "wifi" "$wifi_conf" "$server_ip" "$lan"
+            connect_host_client "$wifi_conf" "$server_ip" "$lan"
+        else
+            info "Could not make the client for the local network test."
+        fi
+    else
+        info "No local network address found. The test skips that check."
+    fi
 
     rm -f "$jar"
     teardown
