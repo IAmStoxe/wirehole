@@ -1,76 +1,278 @@
-version: "3"
+# WireHole - WireGuard, Pi-hole, and Unbound in one Docker Compose stack.
+#
+# This file uses Simplified Technical English comments. Each comment is short.
+# Each comment tells you one fact or one instruction.
+#
+# READ THIS FIRST:
+#   1. Copy the file ".env.example" to ".env".
+#   2. Set the passwords in ".env". Do not keep the default values.
+#   3. Start the stack with the command "docker compose up -d".
+#
+# The stack has two VPN back ends. Select one back end with the variable
+# COMPOSE_PROFILES in the file ".env".
+#   - Profile "wg-easy": a VPN server with a web interface. This is the default.
+#   - Profile "wireguard": a VPN server with configuration files only.
+# Pi-hole and Unbound always start. They do not belong to a profile.
+
+# ---------------------------------------------------------------------------
+# NETWORKS
+# ---------------------------------------------------------------------------
 networks:
+  # All services connect to this network. The services find each other by name.
+  # The DNS services get static addresses. VPN clients use these addresses.
   private_network:
+    name: wirehole
     ipam:
       driver: default
       config:
-        - subnet: 10.2.0.0/24
+        - subnet: ${WIREHOLE_SUBNET:-10.2.0.0/24}
+
+# ---------------------------------------------------------------------------
+# COMMON SETTINGS
+# ---------------------------------------------------------------------------
+# The next block holds settings that more than one service uses.
+# Docker Compose copies the block into a service with the key "<<".
+x-common: &common
+  restart: ${RESTART_POLICY:-unless-stopped}
+  # Limit the log size. Logs cannot fill the disk.
+  logging:
+    driver: json-file
+    options:
+      max-size: ${LOG_MAX_SIZE:-10m}
+      max-file: ${LOG_MAX_FILE:-3}
+
 services:
+  # -------------------------------------------------------------------------
+  # UNBOUND - the recursive DNS resolver
+  # -------------------------------------------------------------------------
+  # Unbound asks the authoritative name servers directly. It does not use a
+  # public DNS provider. Your DNS queries stay private. Unbound also validates
+  # DNSSEC signatures.
   unbound:
-    image: mvance/unbound:latest
-    container_name: unbound
-    restart: unless-stopped
+    <<: *common
+    # This image is small and supports amd64, arm64, and arm/v7 machines.
+    # Pin the version. Change the version only after you read the release notes.
+    image: klutchell/unbound:${UNBOUND_VERSION:-1.26.0}
+    container_name: wirehole-unbound
     hostname: unbound
+    # Mount your own settings. The image reads every ".conf" file in this
+    # directory. Your settings replace the settings of the image.
+    # The mount is read-only. The container cannot change your files.
     volumes:
-      - ./unbound:/opt/unbound/etc/unbound/
+      - ./unbound/custom.conf.d:/etc/unbound/custom.conf.d:ro
     networks:
       private_network:
-        ipv4_address: 10.2.0.200
+        ipv4_address: ${UNBOUND_IPV4_ADDRESS:-10.2.0.200}
+    # SECURITY: Run the process as a normal user. The user 101:102 is the
+    # user "unbound" of the image. The process never runs as root.
+    # The file "pi-hole.conf" contains the setting 'username: ""'. That
+    # setting is necessary. Unbound cannot change the user without root
+    # rights, and Unbound does not need to change the user here.
+    user: "101:102"
+    # SECURITY: Remove all capabilities. Add only one capability.
+    cap_drop:
+      - ALL
     cap_add:
-      - NET_ADMIN
-    env_file: .env
-  wireguard:
+      # A normal user cannot open port 53. This capability permits it.
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    # NOTE: This image has no shell and no utility programs. Therefore a
+    # health check command cannot run in the container. Pi-hole tests the
+    # resolver instead. Look at the Pi-hole logs if name resolution fails.
+
+  # -------------------------------------------------------------------------
+  # PI-HOLE - the DNS filter and the web interface
+  # -------------------------------------------------------------------------
+  # Pi-hole receives the DNS queries of the clients. Pi-hole blocks the
+  # advertisement domains. Pi-hole sends the other queries to Unbound.
+  pihole:
+    <<: *common
+    # Version 2025.x and later is Pi-hole v6. Version 6 uses FTLCONF_ variables.
+    image: pihole/pihole:${PIHOLE_VERSION:-2026.07.2}
+    container_name: wirehole-pihole
+    hostname: pihole
     depends_on:
       - unbound
-      - pihole
-    image: linuxserver/wireguard
-    container_name: wireguard
+    environment:
+      TZ: ${TZ:-Etc/UTC}
+      # The password of the web interface. Set this value in the file ".env".
+      FTLCONF_webserver_api_password: ${PIHOLE_PASSWORD:?Set PIHOLE_PASSWORD in .env}
+      # Send all queries to Unbound. Unbound is the only upstream server.
+      FTLCONF_dns_upstreams: ${UNBOUND_IPV4_ADDRESS:-10.2.0.200}
+      # Answer queries that come from the Docker network.
+      FTLCONF_dns_listeningMode: all
+      # Keep DNSSEC validation off in Pi-hole. Unbound already validates the
+      # signatures. Two validators can report false errors.
+      FTLCONF_dns_dnssec: 'false'
+      # The rate limit counts the queries of one client address.
+      # All VPN clients share one address. Therefore the default limit of
+      # Pi-hole can block normal traffic. The value "0/0" disables the limit.
+      FTLCONF_dns_rateLimit: ${PIHOLE_RATE_LIMIT:-0/0}
+      FTLCONF_webserver_port: '80'
+      # Write the query log. Set the value "false" to stop the query log.
+      FTLCONF_dns_queryLogging: ${PIHOLE_QUERY_LOGGING:-true}
+      FTLCONF_webserver_interface_theme: ${PIHOLE_THEME:-default-auto}
+    volumes:
+      # This directory holds the settings, the block lists, and the statistics.
+      - ./data/pihole:/etc/pihole
     ports:
-      - 5000:5000
-      - 51820:51820/udp
+      # The web interface of Pi-hole.
+      # SECURITY: The default address is 127.0.0.1. Only this computer can
+      # open the page. Connect to the VPN to reach the page from other places.
+      # Change WEB_BIND_ADDRESS to 0.0.0.0 to publish the page to your network.
+      - ${WEB_BIND_ADDRESS:-127.0.0.1}:${PIHOLE_WEB_PORT:-8080}:80/tcp
+      #
+      # SECURITY: Port 53 is not published. An open DNS resolver on the
+      # internet is dangerous. Attackers use it for amplification attacks.
+      # VPN clients do not need this port. They reach Pi-hole on the
+      # Docker network.
+      # Remove the comment characters below only for a local network.
+      # Set the address to your LAN address. Do not use 0.0.0.0.
+      # - 192.168.1.10:53:53/tcp
+      # - 192.168.1.10:53:53/udp
+    networks:
+      private_network:
+        ipv4_address: ${PIHOLE_IPV4_ADDRESS:-10.2.0.100}
+    # SECURITY: Remove all capabilities. Then add only the necessary ones.
+    cap_drop:
+      - ALL
+    cap_add:
+      # Bind the privileged ports 53 and 80.
+      - NET_BIND_SERVICE
+      # Change the owner of the data files at start.
+      - CHOWN
+      # Change to the unprivileged user "pihole".
+      - SETUID
+      - SETGID
+      # dnsmasq needs raw sockets.
+      - NET_RAW
+      # Pi-hole writes capabilities on the program file "pihole-FTL".
+      # Then the program can run as a normal user. Pi-hole stops without
+      # this capability.
+      - SETFCAP
+      # Read and write the data files of the previous owner.
+      - DAC_OVERRIDE
+      # Give a higher priority to the DNS process.
+      - SYS_NICE
+    # NOTE: The option "no-new-privileges" is not possible here. Pi-hole
+    # writes capabilities on the file "pihole-FTL". The option blocks these
+    # capabilities at the start of the program. Then Pi-hole cannot open
+    # port 53. The container drops all other capabilities instead.
+
+  # -------------------------------------------------------------------------
+  # WG-EASY - the VPN server with a web interface (profile "wg-easy")
+  # -------------------------------------------------------------------------
+  # wg-easy contains the WireGuard server and a web interface. You add the
+  # clients in the browser. You get a QR code for every client.
+  # This service starts only with the profile "wg-easy".
+  wg-easy:
+    <<: *common
+    profiles: [wg-easy]
+    image: ghcr.io/wg-easy/wg-easy:${WG_EASY_VERSION:-15}
+    container_name: wirehole-wg-easy
+    hostname: wg-easy
+    depends_on:
+      pihole:
+        condition: service_healthy
+    environment:
+      # The web interface uses HTTP. A reverse proxy with TLS is safer.
+      # The value "true" permits HTTP. Read the file SECURITY.md.
+      INSECURE: ${WG_EASY_INSECURE:-true}
+      # The next INIT_ variables configure the server one time only.
+      # wg-easy reads them at the first start. Later changes have no effect.
+      # Use the web interface to change the settings after the first start.
+      INIT_ENABLED: 'true'
+      INIT_USERNAME: ${WG_EASY_USERNAME:-admin}
+      INIT_PASSWORD: ${WG_EASY_PASSWORD:?Set WG_EASY_PASSWORD in .env}
+      # The public address of your server. The clients connect to this address.
+      # Use your public IP address or your domain name.
+      INIT_HOST: ${VPN_HOST:?Set VPN_HOST in .env}
+      INIT_PORT: ${VPN_PORT:-51820}
+      # Give Pi-hole to the clients as their DNS server.
+      INIT_DNS: ${PIHOLE_IPV4_ADDRESS:-10.2.0.100}
+      INIT_IPV4_CIDR: ${VPN_SUBNET:-10.8.0.0/24}
+      # The networks that the clients send through the VPN.
+      # The value "0.0.0.0/0" is a full tunnel. It sends all traffic.
+      # Read the file README.md for the split tunnel values.
+      INIT_ALLOWED_IPS: ${VPN_ALLOWED_IPS:-0.0.0.0/0, ::/0}
+    volumes:
+      # This directory holds the server keys and the client list.
+      # SECURITY: This directory holds private keys. Protect it.
+      - ./data/wg-easy:/etc/wireguard
+      # The container loads the WireGuard kernel module from this directory.
+      - /lib/modules:/lib/modules:ro
+    ports:
+      # The VPN port. This port must be open on your firewall and your router.
+      - ${VPN_PORT:-51820}:51820/udp
+      # The web interface.
+      # SECURITY: The default address is 127.0.0.1. Read the note at the
+      # Pi-hole ports above. The web interface controls your VPN. Never
+      # publish it to the internet without TLS and a strong password.
+      - ${WEB_BIND_ADDRESS:-127.0.0.1}:${WG_EASY_UI_PORT:-51821}:51821/tcp
+    cap_add:
+      # Create the VPN network interface and set the firewall rules.
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      # Forward the packets of the clients to the internet.
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+    networks:
+      - private_network
+
+  # -------------------------------------------------------------------------
+  # WIREGUARD - the VPN server without a web interface (profile "wireguard")
+  # -------------------------------------------------------------------------
+  # This service is an alternative to wg-easy. It has no web interface.
+  # It writes the client configuration files to the directory "./data/wireguard".
+  # It also prints QR codes to the log.
+  # Use this service if you do not want a web interface.
+  # This service starts only with the profile "wireguard".
+  wireguard:
+    <<: *common
+    profiles: [wireguard]
+    image: lscr.io/linuxserver/wireguard:${WIREGUARD_VERSION:-1.0.20260223-r0-ls120}
+    container_name: wirehole-wireguard
+    hostname: wireguard
+    depends_on:
+      pihole:
+        condition: service_healthy
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Etc/UTC}
+      # The public address of your server. The clients connect to this address.
+      SERVERURL: ${VPN_HOST:?Set VPN_HOST in .env}
+      SERVERPORT: ${VPN_PORT:-51820}
+      # The number of clients, or a list of client names.
+      # Example of a number: 3
+      # Example of a list: phone,laptop,tablet
+      PEERS: ${WIREGUARD_PEERS:-1}
+      # Give Pi-hole to the clients as their DNS server.
+      PEERDNS: ${PIHOLE_IPV4_ADDRESS:-10.2.0.100}
+      # The internal network of the VPN clients.
+      INTERNAL_SUBNET: ${WIREGUARD_INTERNAL_SUBNET:-10.13.13.0}
+      # The networks that the clients send through the VPN.
+      ALLOWEDIPS: ${VPN_ALLOWED_IPS:-0.0.0.0/0, ::/0}
+      # Print the QR codes to the log. Read them with "docker compose logs".
+      LOG_CONFS: ${WIREGUARD_LOG_CONFS:-true}
+    volumes:
+      # This directory holds the server keys and the client configurations.
+      # SECURITY: This directory holds private keys. Protect it.
+      - ./data/wireguard:/config
+      # The container loads the WireGuard kernel module from this directory.
+      - /lib/modules:/lib/modules:ro
+    ports:
+      - ${VPN_PORT:-51820}:51820/udp
     cap_add:
       - NET_ADMIN
+      # SYS_MODULE loads the WireGuard kernel module. Modern Linux kernels
+      # (version 5.6 and later) contain the module. You can remove SYS_MODULE
+      # and the "/lib/modules" volume above on such a kernel.
       - SYS_MODULE
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv4.ip_forward=1
-    volumes:
-      - ./config:/config
-    env_file: .env
-
-  wireguard-ui:
-    image: ngoduykhanh/wireguard-ui:latest
-    container_name: wireguard-ui
-    depends_on:
-      - wireguard
-    cap_add:
-      - NET_ADMIN
-    network_mode: service:wireguard
-    logging:
-      driver: json-file
-      options:
-        max-size: 50m
-    volumes:
-      - ./db:/app/db
-      - ./config:/config
-    env_file: .env
-
-  pihole:
-    depends_on:
-      - unbound
-    container_name: pihole
-    image: pihole/pihole:latest
-    restart: unless-stopped
-    hostname: pihole
-    dns:
-      - 127.0.0.1
-      - ${PIHOLE_DNS}
-    volumes:
-      - ./etc-pihole/:/etc/pihole/
-      - ./etc-dnsmasq.d/:/etc/dnsmasq.d/
-    cap_add:
-      - NET_ADMIN
     networks:
-      private_network:
-        ipv4_address: 10.2.0.100
-    env_file: ./.env
+      - private_network
