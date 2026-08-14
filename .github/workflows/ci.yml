@@ -181,3 +181,32 @@ jobs:
       - name: Stop the stack
         if: always()
         run: docker compose --profile wg-easy --profile wireguard down -v
+
+  e2e:
+    name: Connect a real VPN client
+    runs-on: ubuntu-latest
+    # This job answers the question that matters to a user: does a phone
+    # connect and get working, filtered internet? It starts the stack, makes
+    # client configurations the same way a user makes them, and connects real
+    # WireGuard clients.
+    #
+    # This job found a fault that no other test could see: wg-easy listens on
+    # the port from VPN_PORT inside the container, so a published port with a
+    # different number accepted no connection and reported no error.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the runner has WireGuard
+        run: |
+          sudo modprobe wireguard || true
+          lsmod | grep -q wireguard || modinfo wireguard
+          echo "OK: the kernel has the WireGuard module."
+
+      - name: Test both back ends with real clients
+        run: ./tests/e2e-vpn.sh
+
+      - name: Remove anything left behind
+        if: always()
+        run: |
+          docker ps -aq --filter name=wirehole-e2e | xargs -r docker rm -f
+          docker network prune -f

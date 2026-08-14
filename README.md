@@ -41,6 +41,7 @@ running. Everything after them is reference material for later.
 **Live with it**
 
 - [Operation](#operation): logs, updates, backups
+- [Test that everything works](#test-that-everything-works)
 - [Solve a problem](#solve-a-problem)
 - [Questions people ask](#questions-people-ask)
 - [Security](#security)
@@ -685,6 +686,71 @@ docker compose --profile wg-easy --profile wireguard down -v
 sudo rm -rf data
 docker compose up -d
 ```
+
+## Test that everything works
+
+The project has two scripts. One checks your own stack. The other proves
+that a real device can connect.
+
+### Check your own stack
+
+Run this on your server at any time. It reads only, and it changes nothing.
+
+```bash
+./scripts/wirehole-doctor.sh
+```
+
+It checks Docker, the file `.env` and its permissions, every container, the
+whole DNS chain, DNSSEC, ad blocking, the ports, your firewall, and whether
+`VPN_HOST` still matches your public address. Each problem comes with the
+command that fixes it.
+
+Section 6 of the output lists your devices and the time of the last
+handshake. Run the script again after you connect a phone. If the phone
+appears as connected a few seconds ago, the VPN works.
+
+### Test with a phone on the same Wi-Fi
+
+Test the server before you spend time on your router. This proves the server
+works, and it separates a server problem from a router problem.
+
+```bash
+./scripts/wirehole-doctor.sh --phone
+```
+
+The script prints the steps for your own network, with the local address of
+your server already filled in. In short: put the phone on the same Wi-Fi,
+change the endpoint in the WireGuard app to the local address of the server,
+turn the VPN on, and run the script again.
+
+If the phone connects on your Wi-Fi but not from mobile data, the server is
+fine and the problem is your router or your provider. Read
+[Open the port on your router](#open-the-port-on-your-router).
+
+### Prove that a real client connects
+
+This test starts a complete stack in a temporary directory, makes client
+configurations the same way you do, and connects real WireGuard clients to
+it. Each client is a container that behaves like a phone.
+
+```bash
+./tests/e2e-vpn.sh
+```
+
+It tests both back ends and makes two devices for each one, because a stack
+that connects the first device and fails on the second is a common fault. For
+every client it checks the handshake, traffic through the tunnel, DNS through
+Pi-hole, ad blocking, and reaching the internet.
+
+The test never touches your stack, your file `.env`, or your directory
+`./data`. It uses its own directory, network, and ports.
+
+```bash
+./tests/e2e-vpn.sh --profile wg-easy   # Test one back end.
+./tests/e2e-vpn.sh --keep              # Keep everything, to study a failure.
+```
+
+The same test runs in CI on every change and once a week.
 
 ## Questions people ask
 
