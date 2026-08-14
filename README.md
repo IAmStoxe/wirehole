@@ -17,6 +17,34 @@ The stack gives you these functions:
   Your DNS queries do not go to Google or to Cloudflare.
 - **DNSSEC validation.** Unbound proves that an answer is authentic.
 
+## Where to find things
+
+New here? Read the first four sections in order. That is all you need to get
+running. Everything after them is reference material for later.
+
+**Set it up**
+
+1. [What you need first](#what-you-need-first)
+2. [Quick start](#quick-start)
+3. [Open the web interfaces](#open-the-web-interfaces)
+4. [Open the port on your router](#open-the-port-on-your-router)
+5. [Add a VPN client](#add-a-vpn-client), then
+   [check that it works](#check-that-it-works)
+
+**Change how it behaves**
+
+- [Full tunnel and split tunnel](#full-tunnel-and-split-tunnel)
+- [The two VPN back ends](#the-two-vpn-back-ends)
+- [Configuration](#configuration), for every setting
+- [Keep working when your IP address changes](#keep-working-when-your-ip-address-changes)
+
+**Live with it**
+
+- [Operation](#operation): logs, updates, backups
+- [Solve a problem](#solve-a-problem)
+- [Questions people ask](#questions-people-ask)
+- [Security](#security)
+
 ## How the stack works
 
 ```
@@ -34,20 +62,57 @@ The stack gives you these functions:
 3. Pi-hole sends the other queries to Unbound.
 4. Unbound asks the authoritative name servers and validates the answer.
 
-## Requirements
+## What you need first
 
-- Docker Engine 20.10 or later, and the Docker Compose plugin v2.
-- A server with a public IP address, or a dynamic DNS name.
-- An open UDP port for the VPN. The default port is 51820.
-- A machine with an amd64 processor or an arm64 processor.
-  Raspberry Pi 3 and later models work.
+You do not need to be an expert, but you do need four things. Get all four
+ready before you start. The setup takes about 20 minutes.
 
-Check your versions with these commands:
+**1. A computer that stays on, running Linux.** This computer is your server.
+It can be a Raspberry Pi (model 3 or later), an old desktop computer, a home
+server, or a rented server from a hosting company. It must run Linux.
+
+A VPN needs parts of the Linux kernel that Docker Desktop does not give you,
+so a Mac or a Windows PC cannot host this stack, even with Docker installed.
+Those machines make fine clients. They just cannot be the server.
+
+The server stays on all the time. When it is off, a device with the VPN
+switched on has no internet at all until you switch the VPN off again.
+
+**2. Docker, and git.** The stack runs in Docker. Install Docker with the
+official guide at https://docs.docker.com/engine/install/. On a Raspberry Pi
+or another Debian system, the quick installer also works:
 
 ```bash
-docker --version
-docker compose version
+sudo apt update && sudo apt install -y git
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER
 ```
+
+The last command lets you run Docker without `sudo` every time. It also gives
+your account root-level power on that machine, so use it only on a machine you
+control.
+
+Now log out and log back in. Close the whole SSH session and connect again.
+Nothing else applies the change. If you skip this and later see
+`permission denied while trying to connect to the Docker daemon socket`, this
+is the reason.
+
+Check that it all works:
+
+```bash
+docker --version          # You need 20.10 or later.
+docker compose version    # You need v2 or later.
+```
+
+**3. A way for your devices to find your server.** Your phone must know
+where to connect. This is a public IP address or a domain name. The setup
+script finds your public address automatically. If your address changes,
+read [Keep working when your IP address changes](#keep-working-when-your-ip-address-changes).
+
+**4. One open port.** Your router must send UDP port 51820 to your server.
+This step is the one that stops most people, so it has its own section:
+[Open the port on your router](#open-the-port-on-your-router). Skip this
+step if your server is a rented server with a public address.
 
 ## Quick start
 
@@ -71,7 +136,21 @@ docker compose up -d
 docker compose ps
 ```
 
-The script prints your new passwords. Write them in your password manager.
+The script prints your new passwords. Write them in your password manager
+now, because you need them in the next step.
+
+Step 4 takes a minute, because Pi-hole has to be ready before the VPN starts.
+Let it finish.
+
+Then `docker compose ps` shows three containers. Pi-hole and the VPN say
+`Up (healthy)`. Unbound says only `Up`, with nothing about health. That is
+normal and not a fault: the Unbound image is so small that it has no shell to
+run a health check with. If a container restarts again and again, go to
+[Solve a problem](#solve-a-problem).
+
+Your stack now runs, but you cannot see the control panel yet. The panels
+are closed to the network on purpose, so the next section shows you how to
+open them. After that, you add your first device.
 
 If you do not want the script, copy the file `.env.example` to `.env` and
 set the values yourself:
@@ -94,34 +173,186 @@ is a safety measure. Only the server itself can open the pages.
 | VPN       | http://127.0.0.1:51821        | WG_EASY_PASSWORD  |
 | Pi-hole   | http://127.0.0.1:8080/admin   | PIHOLE_PASSWORD   |
 
-To open a page from another computer, use one of these methods:
+Most people run this on a server with no screen, so you need a way in from
+your own computer. Use Method 1 for your first visit. It is safe, and it is
+one command.
 
-**Method 1: an SSH tunnel.** This method is safe. Run this command on your
-own computer:
+**Method 1: an SSH tunnel.** This is the one to use now. Run this command on
+your own computer, not on the server:
 
 ```bash
 ssh -L 51821:127.0.0.1:51821 -L 8080:127.0.0.1:8080 user@your-server
 ```
 
-Then open `http://127.0.0.1:51821` in your browser.
+Replace the two placeholders:
 
-**Method 2: the VPN.** Connect a client to the VPN first. Then open Pi-hole
-at `http://10.2.0.100/admin`.
+- `user` is the name you log in with on the server, such as `pi` or `ubuntu`.
+- `your-server` is the local address of the server. Run `hostname -I` on the
+  server to find it. It looks like 192.168.1.50.
 
-**Method 3: publish the ports.** Set `WEB_BIND_ADDRESS=0.0.0.0` in the file
-`.env`. This method puts the web interfaces on your network. Do not use this
-method on a public server without a reverse proxy with TLS. Read the file
-[SECURITY.md](SECURITY.md).
+The command then looks like `ssh -L 51821:127.0.0.1:51821 -L
+8080:127.0.0.1:8080 pi@192.168.1.50`.
+
+After you run it, the window looks like an ordinary shell prompt and seems to
+do nothing. That is correct. Leave the window open. While it stays open, open
+`http://127.0.0.1:51821` in the browser **on your own computer**. Close the
+window when you finish, and the door closes with it.
+
+Windows 10 and later already have `ssh`. Run the command in PowerShell.
+
+**Method 2: over the VPN, once you have a device set up.** Connect a device
+to the VPN, then open Pi-hole at `http://10.2.0.100/admin`. This method
+cannot help you yet, because you need the VPN panel to make your first
+device. Use Method 1 for that, then come back to this method later.
+
+**Method 3: publish the ports (not recommended).** Set
+`WEB_BIND_ADDRESS=0.0.0.0` in the file `.env`. This puts both panels on your
+network with no encryption. Anyone on the network can then reach your VPN
+control panel and read your password as it goes past, and a person who has
+your password can add their own VPN device. Only do this on a network you
+trust completely, or behind a reverse proxy with TLS. Read
+[SECURITY.md](SECURITY.md) first.
+
+## Open the port on your router
+
+Your devices connect to your server from outside your home. The connection
+arrives at your router first, and your router does not know where to send it.
+You must tell it. This step is called port forwarding.
+
+Skip this section if your server is a rented server with its own public
+address. Those servers have no router in front of them.
+
+First, check that port forwarding can work for you at all. This takes ten
+seconds and can save you an hour. Run `curl -s ifconfig.me` on your server and
+compare the answer with the internet address shown in your router settings. If
+the two differ, or if your router shows an address that starts with 100.64 to
+100.127, your provider uses CGNAT and port forwarding cannot work. Read the
+note at the end of this section.
+
+Next, open the port on the server itself. Many systems run their own firewall,
+and it blocks the VPN before your router ever matters:
+
+```bash
+sudo ufw allow 51820/udp
+```
+
+Then set up the router:
+
+1. Find the local address of your server. Run `hostname -I` on the server.
+   The address looks like 192.168.1.50.
+2. Give your server a fixed local address. Open your router settings and look
+   for "DHCP reservation" or "static lease". Without this step, your server
+   can get a different address later, and the VPN stops.
+3. Open the port forwarding page of your router. Routers use different names
+   for this page: "Port Forwarding", "Virtual Server", "NAT", or "Applications
+   and Gaming". The site https://portforward.com/router.htm has a guide for
+   most routers.
+4. Make a new rule with these values:
+   - External port: 51820
+   - Internal port: 51820
+   - Protocol: UDP (not TCP)
+   - Internal address: the address of your server from step 1
+5. Save the rule. Some routers need a restart.
+
+Test the rule from a phone with mobile data, not from your home network.
+A test from inside your home often gives a false result.
+
+If the connection does not work, your internet provider may use CGNAT. CGNAT
+gives you an address that you share with other customers, and port forwarding
+cannot work. Ask your provider for a public IP address. Many providers give
+one at no cost.
 
 ## Add a VPN client
 
-1. Open the VPN web interface at `http://127.0.0.1:51821`.
-2. Sign in with the user name `admin` and your `WG_EASY_PASSWORD`.
-3. Select **New Client** and give the client a name.
-4. Read the QR code with the WireGuard application on your telephone.
+1. Open the VPN web interface at `http://127.0.0.1:51821`. If you cannot
+   reach it, use the SSH tunnel from
+   [Open the web interfaces](#open-the-web-interfaces).
+2. Sign in with your `WG_EASY_USERNAME`, which is `admin` unless you changed
+   it, and your `WG_EASY_PASSWORD`.
+3. Select **New Client** and give the device a name, such as "phone".
+4. Read the QR code with the WireGuard application on your phone.
    You can also download the configuration file for a computer.
 
 Get the WireGuard client application from https://www.wireguard.com/install/.
+
+Give every device its own client. Do not put one configuration on two
+devices. WireGuard ties a configuration to one device, and sharing it makes
+both connections unreliable.
+
+### Remove a device
+
+Remove a device when you lose it, or when someone should no longer have
+access.
+
+Open the VPN web interface, find the device in the list, and delete it. The
+change takes effect at once, and the old configuration stops working.
+
+For the `wireguard` profile, a smaller `WIREGUARD_PEERS` number does **not**
+remove access. The old keys stay in `./data/wireguard`. Delete the directory
+of that client, then restart the service:
+
+```bash
+sudo rm -rf data/wireguard/peer_phone
+docker compose restart wireguard
+```
+
+### Check that it works
+
+Turn the VPN on in the WireGuard application on your phone. Then make
+these three checks. Use mobile data, not your home network, for a true test.
+
+**1. The internet works.** Open any website. If nothing loads, your router
+probably does not send the port to your server. Read
+[Open the port on your router](#open-the-port-on-your-router).
+
+**2. The advertisements are gone.** Open a news website that usually shows
+many advertisements. You should see empty spaces where the advertisements
+were.
+
+**3. Your traffic uses your server.** Open https://dnsleaktest.com and start
+the standard test. The result must show your own server, and one server only.
+If you see the name of your internet provider or of Google, your device does
+not use the VPN for DNS.
+
+You can also watch the queries arrive. Open the Pi-hole page and look at
+**Query Log**. Every website that your phone opens appears in that list
+within a few seconds.
+
+## Keep working when your IP address changes
+
+Most home internet connections get a new public IP address from time to time.
+When that happens, your devices try the old address, and the VPN stops. Your
+server is fine. Only the address is wrong.
+
+Use a dynamic DNS name to solve this. The service gives you a name like
+`myhome.duckdns.org` and keeps the name pointed at your current address.
+
+1. Make a free account at https://www.duckdns.org or at another provider.
+2. Follow their instructions to keep the name up to date. Most providers
+   give a small program or a cron job for your server.
+3. Put the name in your file `.env`:
+
+   ```ini
+   VPN_HOST=myhome.duckdns.org
+   ```
+
+4. Start the stack again:
+
+   ```bash
+   docker compose up -d
+   ```
+
+**Important, and easy to miss.** The default wg-easy back end reads the server
+address only one time, at the very first start. If your stack has run before,
+step 3 and step 4 alone change nothing. You must also open the VPN web
+interface, go to the server settings, and change the host there. Then download
+the configuration again for each device.
+
+This catches everybody once, so it is worth saying twice: editing `.env` after
+the first start does not move an existing server. The web interface does.
+
+Devices you set up before the change still point at the old address. Fix each
+one in the VPN web interface, or just create it again.
 
 ## The two VPN back ends
 
@@ -201,21 +432,28 @@ VPN_ALLOWED_IPS=0.0.0.0/0, ::/0
 
 **Split tunnel.** The client sends only the DNS traffic and the web
 interfaces through the VPN. All other traffic uses the normal connection.
-This method is faster, but it blocks advertisements only in DNS.
+This is faster, but it protects less. Your normal traffic does not use the
+VPN, so websites still see your real address, and your device is not protected
+on untrusted Wi-Fi. You still get ad blocking, because the DNS still goes
+through Pi-hole.
 
 ```ini
 VPN_ALLOWED_IPS=10.2.0.0/24
 ```
 
-The clients that exist already do not change. Make a new client after a
-change, or edit the client in the web interface.
+Devices you already set up keep the old setting.
+
+The default wg-easy back end reads these values only at the very first start,
+so editing `.env` later does not change a server that has already run. Change
+it in the VPN web interface instead, then download the configuration again for
+each device.
 
 ### IPv6 and DNS leaks
 
 The default value contains `::/0`. This stack carries IPv4 traffic only.
 Therefore the IPv6 traffic of a client goes into the tunnel and stops there.
 
-This behaviour is correct and safe. A client with IPv6 tries IPv6 first,
+This behavior is correct and safe. A client with IPv6 tries IPv6 first,
 receives no answer, and then uses IPv4 through the VPN. Your real address
 stays secret.
 
@@ -305,7 +543,7 @@ replace the settings of the image.
 Example: send all queries to Cloudflare over TLS instead of a recursive
 lookup. Write this text to `unbound/custom.conf.d/forward.conf`:
 
-```yaml
+```conf
 forward-zone:
     name: "."
     forward-tls-upstream: yes
@@ -361,11 +599,22 @@ Pi-hole database. Stop the stack before you copy this directory.
 
 ```bash
 docker compose down
-tar -czf wirehole-backup.tar.gz data .env
+sudo tar -czf wirehole-backup.tar.gz data .env
 docker compose up -d
 ```
 
+The `sudo` is necessary. The containers make some of those files as root.
+Without it, `tar` skips them and writes an incomplete archive.
+
 Keep the backup file in a safe place. The file holds your private keys.
+
+To restore, put the file back and start the stack:
+
+```bash
+docker compose down
+sudo tar -xzf wirehole-backup.tar.gz
+docker compose up -d
+```
 
 ## Solve a problem
 
@@ -437,6 +686,54 @@ sudo rm -rf data
 docker compose up -d
 ```
 
+## Questions people ask
+
+**Do I really need a computer on all the time?** Yes. The server answers your
+devices, so it has to be awake. A Raspberry Pi is popular for this because it
+uses about as much power as a phone charger.
+
+**Will this slow down my internet?** A little, and you will probably not
+notice. Your traffic goes to your server first, so your home upload speed sets
+the limit. The first visit to a new website is slightly slower, because
+Unbound looks up the answer itself. Every visit after that is faster, because
+the answer is in the cache. A split tunnel avoids most of the cost.
+
+**What does it cost?** Nothing, if you own the hardware. A Raspberry Pi uses a
+few dollars of electricity a year. A small rented server costs about five
+dollars a month.
+
+**At home or on a rented server?** At home, your devices appear to be at
+home, and you can reach your printer and your other devices. You have to
+forward a port, and CGNAT can stop you. On a rented server, there is no port
+forwarding and no CGNAT, and the address never changes. But your traffic
+leaves from a data center, so some streaming services block it and some sites
+show you more puzzles to solve. Ad blocking works the same in both cases.
+
+**What happens when the server restarts?** The stack starts again by itself.
+That is the `RESTART_POLICY` setting, and `unless-stopped` is the default.
+Your devices reconnect on their own.
+
+**Can I use one configuration on my phone and my laptop?** No. Make one
+client for each device. See [Add a VPN client](#add-a-vpn-client).
+
+**A banking app or a video call stopped working.** Some services refuse
+traffic that arrives from a data center, and a few block VPNs completely. Turn
+the VPN off for that app, or use a split tunnel.
+
+**Is this legal?** Running your own VPN is normal and legal in most countries.
+You are connecting to your own computer. Some countries restrict VPNs, so
+check your local law.
+
+**How do I remove it?** Stop everything, then delete the folder:
+
+```bash
+docker compose --profile wg-easy --profile wireguard down -v
+cd .. && sudo rm -rf wirehole
+```
+
+Also remove the firewall rule with `sudo ufw delete allow 51820/udp` and the
+port forwarding rule in your router.
+
 ## Security
 
 Read the file [SECURITY.md](SECURITY.md) for the full information. The most
@@ -454,10 +751,14 @@ important points are here:
 | Architecture | State     | Note                                   |
 | ------------ | --------- | -------------------------------------- |
 | amd64        | Supported | Normal servers and personal computers. |
-| arm64        | Supported | Raspberry Pi 3 and later, Apple silicon. |
+| arm64        | Supported | Raspberry Pi 3 and later, arm64 Linux servers. |
 | armhf/arm32  | No        | LinuxServer stopped these images in 2023. |
 
 Docker selects the correct image for your machine.
+
+The server must run Linux. macOS and Windows cannot host this stack, because
+Docker Desktop runs containers inside its own virtual machine and does not
+give them the kernel features a VPN needs. Both make fine client devices.
 
 ## Author
 

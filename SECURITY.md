@@ -19,7 +19,7 @@ The stack publishes the Pi-hole page and the VPN page on the address
 127.0.0.1 only. Only the server itself can open these pages. A person on
 the internet cannot open them.
 
-The variable `WEB_BIND_ADDRESS` controls this behaviour. Read the section
+The variable `WEB_BIND_ADDRESS` controls this behavior. Read the section
 "Publish the web interfaces" below before you change the value.
 
 ### The DNS port is not public
