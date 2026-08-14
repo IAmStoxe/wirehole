@@ -1,9 +1,23 @@
-wireguard/
-unbound/*
-etc-pihole/
-etc-dnsmasq.d/
-!unbound/unbound.conf
+# Secrets. Never commit these files.
+.env
+.env.*
+!.env.example
+
+# Runtime data. These directories hold private keys, databases, and logs.
+data/
+
+# Directories of older WireHole versions. Keep them out of Git.
 config/
 db/
-.env*
-!.env.example
+etc-pihole/
+etc-dnsmasq.d/
+wireguard/
+
+# Files of the operating system and the editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Local tool settings. Never commit this directory.
+.claude/
