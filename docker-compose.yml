@@ -204,7 +204,13 @@ services:
       - /lib/modules:/lib/modules:ro
     ports:
       # The VPN port. This port must be open on your firewall and your router.
-      - ${VPN_PORT:-51820}:51820/udp
+      #
+      # IMPORTANT: The two numbers must be the same. wg-easy listens on the
+      # port from INIT_PORT inside the container, and INIT_PORT is VPN_PORT.
+      # A different number on the right side sends the traffic to a port
+      # where nothing listens. The VPN then accepts no connection, and the
+      # log shows no error. Only the default value 51820 hides this fault.
+      - ${VPN_PORT:-51820}:${VPN_PORT:-51820}/udp
       # The web interface.
       # SECURITY: The default address is 127.0.0.1. Read the note at the
       # Pi-hole ports above. The web interface controls your VPN. Never
