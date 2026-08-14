@@ -210,6 +210,28 @@ VPN_ALLOWED_IPS=10.2.0.0/24
 The clients that exist already do not change. Make a new client after a
 change, or edit the client in the web interface.
 
+### IPv6 and DNS leaks
+
+The default value contains `::/0`. This stack carries IPv4 traffic only.
+Therefore the IPv6 traffic of a client goes into the tunnel and stops there.
+
+This behaviour is correct and safe. A client with IPv6 tries IPv6 first,
+receives no answer, and then uses IPv4 through the VPN. Your real address
+stays secret.
+
+Do not remove `::/0` to make IPv6 faster. Without this value, the client
+sends the IPv6 traffic outside the tunnel. Then a website sees your real
+address, and the DNS queries do not reach Pi-hole. Disable IPv6 on the
+client if you do not want the small delay.
+
+Test your VPN with these steps:
+
+1. Connect a client to the VPN.
+2. Open https://dnsleaktest.com and start the standard test.
+3. The test must show one server only. The server must be your own server.
+4. Open the Pi-hole page and look at the query log. The log must show the
+   queries of your client.
+
 ## Configuration
 
 All settings are in the file `.env`. The file `.env.example` describes each
