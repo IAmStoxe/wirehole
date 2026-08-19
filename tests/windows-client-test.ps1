@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     WireHole - test a VPN connection from a Windows computer.
@@ -19,6 +19,9 @@
 
     RUN THIS SCRIPT AS ADMINISTRATOR. WireGuard needs administrator rights
     to make a network interface.
+
+    The script runs on Windows PowerShell 5.1, which every Windows computer
+    has, and on PowerShell 7.
 
 .PARAMETER ConfigPath
     The path to the client file that you downloaded from the VPN web
@@ -54,6 +57,24 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Windows PowerShell 5.1 has no variable $IsWindows. That version only runs
+# on Windows, so the value is true there.
+if ($null -eq $IsWindows) { $IsWindows = $true }
+
+# Test-Connection has different parameters in 5.1 and in 7. This function
+# hides the difference.
+function Test-Reachable {
+    param([string]$Target, [int]$Count = 1)
+    try {
+        if ($PSVersionTable.PSVersion.Major -ge 6) {
+            return (Test-Connection -TargetName $Target -Count $Count -Quiet -TimeoutSeconds 2 -ErrorAction SilentlyContinue)
+        }
+        return (Test-Connection -ComputerName $Target -Count $Count -Quiet -ErrorAction SilentlyContinue)
+    }
+    catch { return $false }
+}
+
 $script:Pass = 0
 $script:Fail = 0
 $script:TunnelName = ''
@@ -68,7 +89,13 @@ function Write-Fix  { param($Text) Write-Host "           -> $Text" -ForegroundC
 function Remove-TestTunnel {
     if ($script:TunnelName -and $IsWindows) {
         & "$env:ProgramFiles\WireGuard\wireguard.exe" /uninstalltunnelservice $script:TunnelName 2>&1 | Out-Null
-        Start-Sleep -Seconds 3
+        # Wait until the service is really gone. Windows removes it a few
+        # seconds after the command returns.
+        for ($i = 0; $i -lt 15; $i++) {
+            Start-Sleep -Seconds 1
+            $s = Get-Service -Name "WireGuardTunnel`$$($script:TunnelName)" -ErrorAction SilentlyContinue
+            if (-not $s) { break }
+        }
     }
     if ($script:WorkConfig -and (Test-Path $script:WorkConfig)) {
         Remove-Item $script:WorkConfig -Force -ErrorAction SilentlyContinue
@@ -155,14 +182,23 @@ try {
     # -----------------------------------------------------------------------
 
     & $wgExe /installtunnelservice $script:WorkConfig 2>&1 | Out-Null
-    Start-Sleep -Seconds 4
 
-    $service = Get-Service -Name "WireGuardTunnel`$$($script:TunnelName)" -ErrorAction SilentlyContinue
+    # Windows needs time to install the service and then start it. The wait
+    # must be a loop. A single short pause reports a false failure on a
+    # computer that is only a little slower.
+    $service = $null
+    for ($i = 0; $i -lt 20; $i++) {
+        Start-Sleep -Seconds 1
+        $service = Get-Service -Name "WireGuardTunnel`$$($script:TunnelName)" -ErrorAction SilentlyContinue
+        if ($service -and $service.Status -eq 'Running') { break }
+    }
+
     if ($service -and $service.Status -eq 'Running') {
         Write-Pass 'The tunnel service runs.'
     }
     else {
-        Write-Fail 'The tunnel service did not start.'
+        $state = if ($service) { $service.Status } else { 'not installed' }
+        Write-Fail "The tunnel service did not start (state: $state)."
         Write-Fix 'Open the WireGuard program and look at the log.'
         exit 1
     }
@@ -173,7 +209,7 @@ try {
 
     $handshake = $false
     for ($i = 0; $i -lt 15; $i++) {
-        Test-Connection -TargetName $ServerVpnIp -Count 1 -Quiet -TimeoutSeconds 2 -ErrorAction SilentlyContinue | Out-Null
+        Test-Reachable -Target $ServerVpnIp -Count 1 | Out-Null
         $hs = (& $wgCli show $script:TunnelName latest-handshakes 2>$null)
         if ($hs) {
             $value = ($hs -split '\s+')[1]
@@ -193,7 +229,7 @@ try {
     }
 
     if ($handshake) {
-        if (Test-Connection -TargetName $ServerVpnIp -Count 2 -Quiet -TimeoutSeconds 3 -ErrorAction SilentlyContinue) {
+        if (Test-Reachable -Target $ServerVpnIp -Count 2) {
             Write-Pass 'Traffic passes through the tunnel.'
         }
         else {

@@ -698,6 +698,20 @@ docker compose up -d
 The project has two scripts. One checks your own stack. The other proves
 that a real device can connect.
 
+### What the tests cover, and what they cannot
+
+The tests prove the part that this project controls: from the operating
+system of your server, into the stack. A client on your server makes a real
+WireGuard connection to the published port, gets DNS from Pi-hole, and
+reaches the internet through the tunnel.
+
+The tests cannot prove the part that belongs to your network: the port
+forwarding rule in your router, your internet provider, and any firewall
+between your device and your server. No test inside the server can see that
+path. If the tests pass and a device outside your home still fails, the
+stack is working and the problem is in that path. Read
+[Open the port on your router](#open-the-port-on-your-router).
+
 ### Check your own stack
 
 Run this on your server at any time. It reads only, and it changes nothing.
