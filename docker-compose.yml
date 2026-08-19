@@ -169,7 +169,7 @@ services:
   wg-easy:
     <<: *common
     profiles: [wg-easy]
-    image: ghcr.io/wg-easy/wg-easy:${WG_EASY_VERSION:-15}
+    image: ghcr.io/wg-easy/wg-easy:${WG_EASY_VERSION:-15.4.0}
     container_name: wirehole-wg-easy
     hostname: wg-easy
     depends_on:

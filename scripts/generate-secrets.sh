@@ -74,6 +74,9 @@ set_var() {
     ' .env > .env.tmp && mv .env.tmp .env
 }
 
+# SECURITY: Make every new file private before any password lands in one.
+umask 077
+
 cp .env.example .env
 
 PIHOLE_PW="$(make_password)"

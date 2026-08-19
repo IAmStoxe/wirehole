@@ -88,7 +88,6 @@ fi
 
 VPN_HOST="$(env_get VPN_HOST)"
 VPN_PORT="$(env_get VPN_PORT 51820)"
-PIHOLE_IP="$(env_get PIHOLE_IPV4_ADDRESS 10.2.0.100)"
 UNBOUND_IP="$(env_get UNBOUND_IPV4_ADDRESS 10.2.0.200)"
 PROFILE="$(env_get COMPOSE_PROFILES wg-easy)"
 BIND="$(env_get WEB_BIND_ADDRESS 127.0.0.1)"
@@ -137,13 +136,13 @@ else
     fix "Start it with: docker compose up -d"
 fi
 
-unhealthy="$(docker ps --filter health=unhealthy --format '{{.Names}}' | grep wirehole || true)"
+unhealthy="$(docker ps --filter health=unhealthy --format '{{.Names}}' | grep -E '^wirehole-(pihole|unbound|wg-easy|wireguard)$' || true)"
 if [[ -n $unhealthy ]]; then
     bad "These containers report unhealthy: $unhealthy"
     fix "Look at the log: docker compose logs $unhealthy"
 fi
 
-restarting="$(docker ps --filter status=restarting --format '{{.Names}}' | grep wirehole || true)"
+restarting="$(docker ps --filter status=restarting --format '{{.Names}}' | grep -E '^wirehole-(pihole|unbound|wg-easy|wireguard)$' || true)"
 if [[ -n $restarting ]]; then
     bad "These containers restart again and again: $restarting"
     fix "Look at the log: docker compose logs $restarting"
@@ -225,6 +224,21 @@ if [[ $VPN_SVC == "wg-easy" ]]; then
     else
         warn "The VPN panel did not answer on port ${UI_PORT}."
     fi
+
+    # wg-easy reads the port one time, at the first start. A later change
+    # of VPN_PORT moves the published port but not the listen port, and
+    # the VPN stops with no error. Compare the two.
+    wgc="$(docker compose ps -q wg-easy 2> /dev/null | head -1)"
+    if [[ -n $wgc ]]; then
+        listen="$(docker exec "$wgc" wg show wg0 listen-port 2> /dev/null)"
+        if [[ -n $listen && $listen != "$VPN_PORT" ]]; then
+            bad "The server listens on port $listen, but VPN_PORT is $VPN_PORT."
+            fix "wg-easy reads the port only at the first start."
+            fix "Change the port in the VPN web interface, or set VPN_PORT=$listen."
+        elif [[ -n $listen ]]; then
+            ok "The VPN listen port matches VPN_PORT ($listen)."
+        fi
+    fi
 fi
 
 if command -v ufw > /dev/null 2>&1 && ufw status 2> /dev/null | grep -q "Status: active"; then
@@ -270,7 +284,8 @@ fi
 say "6. Connected devices"
 # ---------------------------------------------------------------------------
 
-VPN_C="$(docker compose ps -q "$VPN_SVC" 2> /dev/null | head -1)"
+VPN_C=""
+[[ -n $VPN_SVC ]] && VPN_C="$(docker compose ps -q "$VPN_SVC" 2> /dev/null | head -1)"
 if [[ -n $VPN_C ]]; then
     peers="$(docker exec "$VPN_C" wg show all latest-handshakes 2> /dev/null)"
     if [[ -z $peers ]]; then
