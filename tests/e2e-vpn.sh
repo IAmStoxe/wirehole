@@ -98,6 +98,8 @@ bad() {
 }
 info() { printf '    ....... %s\n' "$*"; }
 
+REMOTE_ACTIVE=""
+
 teardown() {
     # The option --keep stops all clean up, so a failure can be examined.
     [[ $KEEP -eq 1 ]] && return 0
@@ -112,8 +114,14 @@ teardown() {
     WORK_DIR=""
 }
 
+# shellcheck disable=SC2329 # The trap below calls this function.
 cleanup() {
     local code=$?
+    # A private key on another machine must never stay behind, also not
+    # with --keep and also not after Ctrl-C.
+    if [[ -n ${REMOTE_ACTIVE:-} ]] && declare -f remote_cleanup > /dev/null; then
+        remote_cleanup
+    fi
     if [[ $KEEP -eq 1 && -n $WORK_DIR ]]; then
         say "The option --keep is active. The test keeps these items:"
         echo "  Directory: $WORK_DIR"
@@ -122,10 +130,10 @@ cleanup() {
         echo "    docker rm -f ${CLIENTS[*]:-}"
         echo "    (cd $WORK_DIR && docker compose -p $PROJECT --profile wg-easy --profile wireguard down -v)"
         echo "    sudo rm -rf $WORK_DIR"
-        return $code
+        return "$code"
     fi
     teardown
-    return $code
+    return "$code"
 }
 trap cleanup EXIT
 
@@ -140,6 +148,13 @@ start_stack() {
     cp "$REPO_DIR/docker-compose.yml" "$WORK_DIR/"
     cp -r "$REPO_DIR/unbound" "$WORK_DIR/"
     cp "$REPO_DIR/.env.example" "$WORK_DIR/.env"
+
+    # The compose file gives the network and the containers fixed names.
+    # A test with those names would join the network of a live stack and
+    # collide with its containers. Remove them from the copy. Docker
+    # Compose then makes unique names from the project name, and the test
+    # can run on a machine with a running stack.
+    sed -i '/^    name: wirehole$/d; /container_name:/d' "$WORK_DIR/docker-compose.yml"
 
     set_var() {
         VALUE="$2" awk -v key="$1" '
@@ -174,7 +189,9 @@ start_stack() {
 # ---------------------------------------------------------------------------
 connect_and_test_client() {
     local label="$1" conf="$2" server_vpn_ip="$3" endpoint="${4:-}"
-    local name="wirehole-e2e-client-$$-$(tr -dc 'a-z0-9' <<< "$label" | head -c 12)"
+    local suffix name
+    suffix="$(tr -dc 'a-z0-9' <<< "$label" | head -c 12)"
+    name="wirehole-e2e-client-$$-${suffix}"
     CLIENTS+=("$name")
 
     head2 "Client '$label'"
@@ -422,14 +439,21 @@ connect_remote_client() {
     conf="$(sed -E "s|^ *AllowedIPs *=.*|AllowedIPs = 10.8.0.0/24, 10.98.13.0/24|" <<< "$conf")"
     conf="$(sed -E "/^ *DNS *=/d" <<< "$conf")"
 
-    # Always remove the interface on the other computer, also after a fault.
+    # Always remove the interface on the other computer, also after a fault
+    # or an interrupt. The global clean up calls this too.
+    REMOTE_ACTIVE="$target"
     remote_cleanup() {
-        timeout 25 ssh "${ssh_opts[@]}" "$target" \
+        [[ -z ${REMOTE_ACTIVE:-} ]] && return 0
+        timeout 25 ssh "${ssh_opts[@]}" "$REMOTE_ACTIVE" \
             "sudo wg-quick down /tmp/${iface}.conf >/dev/null 2>&1; sudo ip link del ${iface} >/dev/null 2>&1; rm -f /tmp/${iface}.conf" \
             > /dev/null 2>&1
+        REMOTE_ACTIVE=""
     }
 
-    if ! ssh "${ssh_opts[@]}" "$target" "cat > /tmp/${iface}.conf && chmod 600 /tmp/${iface}.conf" <<< "$conf"; then
+    # Write the file with a private permission from the first moment.
+    # The file holds a private key.
+    # shellcheck disable=SC2029 # ${iface} must expand here, on this side.
+    if ! ssh "${ssh_opts[@]}" "$target" "umask 077 && cat > /tmp/${iface}.conf" <<< "$conf"; then
         bad "Could not copy the configuration to $target."
         return 1
     fi
@@ -485,10 +509,18 @@ test_dns_chain() {
     c="$(cd "$WORK_DIR" && docker compose -p "$PROJECT" ps -q pihole | head -1)"
 
     r="$(docker exec "$c" dig +short +time=8 example.com @127.0.0.1 2> /dev/null | head -1)"
-    [[ $r =~ ^[0-9]+\. ]] && ok "Pi-hole resolves a name ($r)" || bad "Pi-hole does not resolve a name"
+    if [[ $r =~ ^[0-9]+\. ]]; then
+        ok "Pi-hole resolves a name ($r)"
+    else
+        bad "Pi-hole does not resolve a name"
+    fi
 
     r="$(docker exec "$c" dig +short +time=8 wikipedia.org @"$TEST_UNBOUND_IP" 2> /dev/null | head -1)"
-    [[ -n $r ]] && ok "Unbound resolves by recursion ($r)" || bad "Unbound does not answer"
+    if [[ -n $r ]]; then
+        ok "Unbound resolves by recursion ($r)"
+    else
+        bad "Unbound does not answer"
+    fi
 
     if docker exec "$c" dig +dnssec +time=8 cloudflare.com @"$TEST_UNBOUND_IP" 2> /dev/null | grep -q '^;; flags.* ad'; then
         ok "Unbound validates a signed answer"
