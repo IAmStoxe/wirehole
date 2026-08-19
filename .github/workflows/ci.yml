@@ -196,10 +196,21 @@ jobs:
           else
             docker exec wirehole-wireguard wg show | grep -q 'interface:'
             # The service must write a configuration file for the client.
+            # It writes the file a moment after the start, so wait for it.
             # Read the file in the container. The files on the host belong
             # to the user of the variable PUID.
-            docker exec wirehole-wireguard cat /config/peer1/peer1.conf \
-              | grep -q '^DNS = 10.2.0.100'
+            for i in $(seq 1 30); do
+              if docker exec wirehole-wireguard cat /config/peer1/peer1.conf 2>/dev/null \
+                | grep -q '^DNS = 10.2.0.100'; then
+                break
+              fi
+              if [ "$i" = "30" ]; then
+                echo "ERROR: No peer configuration appeared after 60 seconds."
+                docker exec wirehole-wireguard ls -R /config | head -30
+                exit 1
+              fi
+              sleep 2
+            done
           fi
           echo "OK: The VPN interface works."
 
