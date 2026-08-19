@@ -76,6 +76,12 @@ A VPN needs parts of the Linux kernel that Docker Desktop does not give you,
 so a Mac or a Windows PC cannot host this stack, even with Docker installed.
 Those machines make fine clients. They just cannot be the server.
 
+WSL2 on Windows is also not a good host. WSL2 puts Linux behind a private
+network, so your other devices cannot reach the VPN port. Windows can forward
+TCP ports into WSL2, but WireGuard uses UDP, and the Windows port forwarding
+tool does not forward UDP. WSL2 works for development and for the tests in
+this project. It does not work as a real server.
+
 The server stays on all the time. When it is off, a device with the VPN
 switched on has no internet at all until you switch the VPN off again.
 
@@ -765,6 +771,40 @@ The test never touches your stack, your file `.env`, or your directory
 ```
 
 The same test runs in CI on every change and once a week.
+
+### Connect from another computer on your network
+
+This is the most realistic test. The traffic leaves the server, crosses your
+network, and comes back. No test inside the server can do that.
+
+```bash
+./tests/e2e-vpn.sh --remote user@192.168.1.120
+```
+
+The other computer needs an SSH login without a password, the package
+`wireguard-tools`, and the right to run `sudo wg-quick`. The test copies a
+configuration there, connects, checks the handshake and the tunnel, and then
+removes the interface again. It routes only the VPN network, so it does not
+disturb the other computer.
+
+### Connect from a Windows computer
+
+Download a client file from the VPN web interface. Then open PowerShell 7
+as administrator on the Windows computer and run:
+
+```powershell
+.	ests\windows-client-test.ps1 -ConfigPath .\phone.conf
+```
+
+Add the local address of your server when you test on your own Wi-Fi:
+
+```powershell
+.	ests\windows-client-test.ps1 -ConfigPath .\phone.conf -Endpoint 192.168.1.50
+```
+
+The script checks the handshake, the tunnel, the DNS, and the ad blocking.
+It then removes the tunnel. It uses a narrow route list, so your other
+traffic stays outside the VPN during the test.
 
 ## Questions people ask
 

@@ -26,6 +26,10 @@
 #   ./tests/e2e-vpn.sh                     # Test both back ends.
 #   ./tests/e2e-vpn.sh --profile wg-easy   # Test one back end.
 #   ./tests/e2e-vpn.sh --keep              # Keep everything after a failure.
+#   ./tests/e2e-vpn.sh --remote Devin@192.168.1.120
+#                                          # Also connect from another
+#                                          # computer on your network. This
+#                                          # is the most realistic test.
 #   ./tests/e2e-vpn.sh --help
 #
 # The script gives exit code 0 when all tests pass.
@@ -34,6 +38,7 @@ set -uo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KEEP=0
+REMOTE=""
 PROFILES="wg-easy wireguard"
 WORK_DIR=""
 PROJECT=""
@@ -53,6 +58,14 @@ FAIL=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --keep) KEEP=1 ;;
+        --remote)
+            shift
+            REMOTE="${1:-}"
+            [[ -z $REMOTE ]] && {
+                echo "Error: --remote needs a value like user@192.168.1.120." >&2
+                exit 1
+            }
+            ;;
         --profile)
             shift
             PROFILES="${1:-}"
@@ -357,6 +370,115 @@ connect_host_client() {
 }
 
 # ---------------------------------------------------------------------------
+# Connect from another computer on your network, through SSH.
+#
+# This is the most realistic test in this file. The traffic leaves this
+# server, crosses your network, and comes back. No other test does that.
+#
+# The other computer needs:
+#   - An SSH login that works without a password prompt.
+#   - The package "wireguard-tools".
+#   - The right to run "sudo wg-quick" without a password prompt.
+#
+# The test uses a narrow AllowedIPs value, so it never moves the default
+# route of the other computer.
+# ---------------------------------------------------------------------------
+connect_remote_client() {
+    local target="$1" conf="$2" server_vpn_ip="$3" endpoint="$4"
+    local iface="whe2e0"
+
+    head2 "A client on another computer ($target)"
+
+    local ssh_opts=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10)
+
+    if ! timeout 20 ssh "${ssh_opts[@]}" "$target" true > /dev/null 2>&1; then
+        bad "Cannot log in to $target without a password."
+        fix_hint "Copy your key first: ssh-copy-id $target"
+        return 1
+    fi
+    ok "SSH to $target works"
+
+    if ! timeout 20 ssh "${ssh_opts[@]}" "$target" 'command -v wg-quick' > /dev/null 2>&1; then
+        bad "$target does not have wg-quick."
+        fix_hint "Install it there: sudo apt install -y wireguard-tools"
+        return 1
+    fi
+    ok "$target has the WireGuard tools"
+
+    if ! timeout 20 ssh "${ssh_opts[@]}" "$target" 'sudo -n true' > /dev/null 2>&1; then
+        bad "$target asks for a password for sudo. The test cannot make an interface."
+        return 1
+    fi
+
+    # Can the other computer reach the VPN port at all?
+    if timeout 20 ssh "${ssh_opts[@]}" "$target" \
+        "command -v nc >/dev/null 2>&1 && timeout 3 nc -zu ${endpoint} ${TEST_VPN_PORT}" > /dev/null 2>&1; then
+        ok "$target can send UDP to ${endpoint}:${TEST_VPN_PORT}"
+    else
+        info "Could not confirm the UDP path first. The handshake test decides."
+    fi
+
+    conf="$(sed -E "s|^ *Endpoint *=.*|Endpoint = ${endpoint}:${TEST_VPN_PORT}|" <<< "$conf")"
+    conf="$(sed -E "s|^ *AllowedIPs *=.*|AllowedIPs = 10.8.0.0/24, 10.98.13.0/24|" <<< "$conf")"
+    conf="$(sed -E "/^ *DNS *=/d" <<< "$conf")"
+
+    # Always remove the interface on the other computer, also after a fault.
+    remote_cleanup() {
+        timeout 25 ssh "${ssh_opts[@]}" "$target" \
+            "sudo wg-quick down /tmp/${iface}.conf >/dev/null 2>&1; sudo ip link del ${iface} >/dev/null 2>&1; rm -f /tmp/${iface}.conf" \
+            > /dev/null 2>&1
+    }
+
+    if ! ssh "${ssh_opts[@]}" "$target" "cat > /tmp/${iface}.conf && chmod 600 /tmp/${iface}.conf" <<< "$conf"; then
+        bad "Could not copy the configuration to $target."
+        return 1
+    fi
+
+    if timeout 40 ssh "${ssh_opts[@]}" "$target" "sudo wg-quick up /tmp/${iface}.conf" > /tmp/e2e-remote.log 2>&1; then
+        ok "The VPN interface started on $target"
+    else
+        bad "The VPN interface did not start on $target"
+        tail -5 /tmp/e2e-remote.log
+        remote_cleanup
+        return 1
+    fi
+
+    local handshake=0
+    for _ in $(seq 1 15); do
+        timeout 15 ssh "${ssh_opts[@]}" "$target" "ping -c1 -W2 ${server_vpn_ip}" > /dev/null 2>&1
+        local hs
+        hs="$(timeout 15 ssh "${ssh_opts[@]}" "$target" "sudo wg show ${iface} latest-handshakes 2>/dev/null | awk '{print \$2}'" 2> /dev/null)"
+        if [[ -n $hs && $hs != "0" ]]; then
+            handshake=1
+            break
+        fi
+        sleep 2
+    done
+
+    if [[ $handshake -eq 1 ]]; then
+        ok "The handshake succeeded from another computer on your network"
+    else
+        bad "No handshake from $target. Your network blocks the path, or the port is closed."
+    fi
+
+    if timeout 20 ssh "${ssh_opts[@]}" "$target" "ping -c2 -W3 ${server_vpn_ip}" > /dev/null 2>&1; then
+        ok "Traffic passes through the tunnel from $target"
+    else
+        bad "No traffic through the tunnel from $target"
+    fi
+
+    remote_cleanup
+
+    if timeout 20 ssh "${ssh_opts[@]}" "$target" "ip link show ${iface}" > /dev/null 2>&1; then
+        bad "The interface stayed on $target. Remove it with: sudo ip link del ${iface}"
+    else
+        ok "The test removed the interface from $target"
+    fi
+}
+
+fix_hint() { printf '             -> %s\n' "$*"; }
+
+# ---------------------------------------------------------------------------
 test_dns_chain() {
     head2 "The DNS chain on the server"
     local c r
@@ -492,6 +614,7 @@ for c in json.load(sys.stdin):
         if [[ -n $wifi_conf ]]; then
             connect_and_test_client "wifi" "$wifi_conf" "$server_ip" "$lan"
             connect_host_client "$wifi_conf" "$server_ip" "$lan"
+            [[ -n $REMOTE ]] && connect_remote_client "$REMOTE" "$wifi_conf" "$server_ip" "$lan"
         else
             info "Could not make the client for the local network test."
         fi
