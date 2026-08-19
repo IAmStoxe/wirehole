@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security problem
+    url: https://github.com/IAmStoxe/wirehole/security
+    about: Do not open a public issue for a security weakness. Use private reporting.
+  - name: Upgrade help
+    url: https://github.com/IAmStoxe/wirehole/blob/master/UPGRADING.md
+    about: Coming from the old WireHole layout? The upgrade guide covers the migration.

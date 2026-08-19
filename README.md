@@ -1,5 +1,9 @@
 # WireHole
 
+> **Upgrading from an older WireHole?** The 2026 rewrite changed the
+> layout. Do not just pull and restart. Read [UPGRADING.md](UPGRADING.md) -
+> one script keeps your devices working.
+
 ## What is this?
 
 WireHole is a docker-compose project that combines WireGuard, Pi-hole, and
@@ -350,13 +354,19 @@ Use a dynamic DNS name to solve this. The service gives you a name like
    ```
 
 **Important, and easy to miss.** The default wg-easy back end reads the server
-address only one time, at the very first start. If your stack has run before,
+address, the port, the client network, and the DNS server only one time, at
+the very first start. If your stack has run before,
 step 3 and step 4 alone change nothing. You must also open the VPN web
 interface, go to the server settings, and change the host there. Then download
 the configuration again for each device.
 
 This catches everybody once, so it is worth saying twice: editing `.env` after
 the first start does not move an existing server. The web interface does.
+The same rule applies to `VPN_PORT`: a later change in `.env` moves the
+published port, but the server inside still listens on the old one, and the
+VPN stops without any error in the log. Change the port in the web
+interface first, then in `.env`, then restart. The doctor script warns when
+the two ports disagree.
 
 Devices you set up before the change still point at the old address. Fix each
 one in the VPN web interface, or just create it again.
@@ -497,7 +507,7 @@ setting. This section shows the settings that most users change.
 | `COMPOSE_PROFILES`  | `wg-easy`         | The VPN back end.                 |
 | `VPN_PORT`          | `51820`           | The public UDP port of the VPN.   |
 | `VPN_ALLOWED_IPS`   | `0.0.0.0/0, ::/0` | Full tunnel or split tunnel.      |
-| `VPN_SUBNET`        | `10.8.0.0/24`     | The network of the VPN clients.   |
+| `VPN_SUBNET`        | `10.8.0.0/24`     | The client network (wg-easy only). |
 | `WEB_BIND_ADDRESS`  | `127.0.0.1`       | The address of the web interfaces.|
 | `TZ`                | `Etc/UTC`         | Your time zone.                   |
 
@@ -807,13 +817,13 @@ Download a client file from the VPN web interface. Then open PowerShell 7
 as administrator on the Windows computer and run:
 
 ```powershell
-.	ests\windows-client-test.ps1 -ConfigPath .\phone.conf
+.\tests\windows-client-test.ps1 -ConfigPath .\phone.conf
 ```
 
 Add the local address of your server when you test on your own Wi-Fi:
 
 ```powershell
-.	ests\windows-client-test.ps1 -ConfigPath .\phone.conf -Endpoint 192.168.1.50
+.\tests\windows-client-test.ps1 -ConfigPath .\phone.conf -Endpoint 192.168.1.50
 ```
 
 The script checks the handshake, the tunnel, the DNS, and the ad blocking.
