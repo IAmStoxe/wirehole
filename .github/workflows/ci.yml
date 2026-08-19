@@ -56,7 +56,13 @@ jobs:
             echo "ERROR: The compose file started without a password."
             exit 1
           fi
-          grep -q 'PIHOLE_PASSWORD' error.log
+          # Compose names one missing variable in the error. Which one comes
+          # first depends on the compose version, so accept either password.
+          grep -qE 'PIHOLE_PASSWORD|WG_EASY_PASSWORD' error.log || {
+            echo "ERROR: The refusal did not mention a password variable."
+            cat error.log
+            exit 1
+          }
           echo "OK: The compose file needs a password."
 
       - name: Check that no secret is in the repository
