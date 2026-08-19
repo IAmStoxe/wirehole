@@ -72,7 +72,11 @@ jobs:
             echo "ERROR: Git does not ignore the file .env."
             exit 1
           }
-          git check-ignore data > /dev/null || {
+          # Ask about a file inside the directory, not about the directory
+          # itself. The pattern "data/" only matches a directory, and on a
+          # fresh checkout the directory does not exist yet, so the plain
+          # "data" question gets the answer "not ignored".
+          git check-ignore data/anything > /dev/null || {
             echo "ERROR: Git does not ignore the directory data."
             exit 1
           }
