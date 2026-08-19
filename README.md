@@ -796,6 +796,22 @@ The test never touches your stack, your file `.env`, or your directory
 
 The same test runs in CI on every change and once a week.
 
+### Test the web pages in a browser
+
+The tests above use the API. This test opens the pages the way you do. A
+real browser fills both login forms, checks that a wrong password is
+refused, reads the dashboard, creates a client, waits for the QR code, and
+downloads the configuration. A JavaScript error on any page fails the test.
+
+```bash
+docker compose up -d       # The stack must run with the wg-easy profile.
+./tests/ui-test.sh
+```
+
+The browser runs in the official Playwright container, so nothing gets
+installed on your computer. The test adds one client named "ui-test-..."
+and removes it again at the end.
+
 ### Connect from another computer on your network
 
 This is the most realistic test. The traffic leaves the server, crosses your

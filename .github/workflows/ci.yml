@@ -211,6 +211,46 @@ jobs:
         if: always()
         run: docker compose --profile wg-easy --profile wireguard down -v
 
+  ui:
+    name: Drive the web interfaces in a browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The e2e job proves the VPN and the API. This job proves the pages: a
+    # browser fills the login forms, reads the dashboard, creates a client,
+    # and downloads its configuration. A page that throws a JavaScript
+    # error fails the job.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make the configuration file
+        run: |
+          cp .env.example .env
+          sed -i 's|^VPN_HOST=.*|VPN_HOST=192.0.2.1|' .env
+          sed -i 's|^PIHOLE_PASSWORD=.*|PIHOLE_PASSWORD=ci-test-password|' .env
+          sed -i 's|^WG_EASY_PASSWORD=.*|WG_EASY_PASSWORD=ci-test-password|' .env
+
+      - name: Start the stack
+        run: docker compose up -d --wait --wait-timeout 180
+
+      - name: Test the pages in a real browser
+        run: ./tests/ui-test.sh
+
+      - name: Read the logs after a failure
+        if: failure()
+        run: docker compose logs --tail 60
+
+      - name: Keep the failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-failure-screenshot
+          path: tests/ui/ui-failure.png
+          if-no-files-found: ignore
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v
+
   e2e:
     name: Connect a real VPN client
     runs-on: ubuntu-latest
