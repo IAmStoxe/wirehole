@@ -1,0 +1,38 @@
+name: Bug report
+description: The stack does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Run `./scripts/wirehole-doctor.sh` first. It finds the common
+        problems and prints the fix. If you upgraded from the old
+        WireHole, read UPGRADING.md before you file.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Doctor output
+      description: Paste the output of ./scripts/wirehole-doctor.sh. Remove your public IP address.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, architecture (amd64/arm64), Docker version, and which profile (wg-easy or wireguard).
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste the log of the failing service (docker compose logs <service>). Remove addresses and passwords.
+      render: text

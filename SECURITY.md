@@ -9,6 +9,11 @@ Do not open a public issue for a security weakness. Send a private report
 with the "Report a vulnerability" button on the Security page of the GitHub
 repository. Describe the problem and the steps that show the problem.
 
+If you do not see that button, the private reporting feature is switched
+off. In that case, contact the author directly through the profile page
+https://github.com/IAmStoxe and wait for a private channel before you share
+the details.
+
 ## The safe defaults of this stack
 
 The stack starts with safe values. You do not need to change them.

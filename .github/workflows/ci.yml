@@ -9,17 +9,26 @@ on:
     branches: [master, main]
   pull_request:
   schedule:
-    # Run at 06:00 UTC on Monday.
+    # Run at 06:00 UTC on Monday. This run replaces the pinned image
+    # versions with "latest", so it finds a new image version that breaks
+    # the stack before a user does. A red weekly run means: read the
+    # release notes of the images, not: the repository is broken.
     - cron: '0 6 * * 1'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# A new push cancels the runs of the old push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lint:
     name: Check the files
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -27,7 +36,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
-          shellcheck scripts/*.sh
+          shellcheck scripts/*.sh tests/*.sh
 
       - name: Check that the compose file is valid
         run: |
@@ -66,6 +75,7 @@ jobs:
   test:
     name: Start the stack and test the DNS
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -80,9 +90,18 @@ jobs:
           sed -i 's|^PIHOLE_PASSWORD=.*|PIHOLE_PASSWORD=ci-test-password|' .env
           sed -i 's|^WG_EASY_PASSWORD=.*|WG_EASY_PASSWORD=ci-test-password|' .env
           sed -i 's|^COMPOSE_PROFILES=.*|COMPOSE_PROFILES=${{ matrix.profile }}|' .env
-          # The runner uses port 53 for its own resolver. Move the test to
-          # another network to prevent a conflict.
-          sed -i 's|^WEB_BIND_ADDRESS=.*|WEB_BIND_ADDRESS=127.0.0.1|' .env
+
+      - name: Use the newest images on the weekly run
+        if: github.event_name == 'schedule'
+        run: |
+          # The normal runs test the pinned versions, the same bits every
+          # time. The weekly run tests the newest images instead, so a new
+          # image version that breaks the stack shows up here first.
+          sed -i -E 's|^(PIHOLE_VERSION)=.*|\1=latest|' .env
+          sed -i -E 's|^(UNBOUND_VERSION)=.*|\1=latest|' .env
+          sed -i -E 's|^(WG_EASY_VERSION)=.*|\1=15|' .env
+          sed -i -E 's|^(WIREGUARD_VERSION)=.*|\1=latest|' .env
+          grep -E '^(PIHOLE|UNBOUND|WG_EASY|WIREGUARD)_VERSION=' .env
 
       - name: Start the stack
         run: docker compose up -d --wait --wait-timeout 180
@@ -185,6 +204,7 @@ jobs:
   e2e:
     name: Connect a real VPN client
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     # This job answers the question that matters to a user: does a phone
     # connect and get working, filtered internet? It starts the stack, makes
     # client configurations the same way a user makes them, and connects real
@@ -201,6 +221,14 @@ jobs:
           sudo modprobe wireguard || true
           lsmod | grep -q wireguard || modinfo wireguard
           echo "OK: the kernel has the WireGuard module."
+
+      - name: Use the newest images on the weekly run
+        if: github.event_name == 'schedule'
+        run: |
+          sed -i -E 's|^(PIHOLE_VERSION)=.*|\1=latest|' .env.example
+          sed -i -E 's|^(UNBOUND_VERSION)=.*|\1=latest|' .env.example
+          sed -i -E 's|^(WG_EASY_VERSION)=.*|\1=15|' .env.example
+          sed -i -E 's|^(WIREGUARD_VERSION)=.*|\1=latest|' .env.example
 
       - name: Test both back ends with real clients
         run: ./tests/e2e-vpn.sh

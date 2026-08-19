@@ -27,6 +27,11 @@ jobs:
           days-before-stale: 60
           days-before-close: 14
 
+          # Leave the issues from before the 2026 rewrite alone. People
+          # need the old threads while they migrate. The bot only touches
+          # items that arrive after this date.
+          start-date: '2026-08-18T00:00:00Z'
+
           stale-issue-label: no-issue-activity
           stale-pr-label: no-pr-activity
 
