@@ -114,7 +114,9 @@ teardown() {
     WORK_DIR=""
 }
 
-# shellcheck disable=SC2329 # The trap below calls this function.
+# The trap below calls this function. Old shellcheck versions use the
+# code SC2317 for this case, new versions use SC2329. Disable both.
+# shellcheck disable=SC2317,SC2329
 cleanup() {
     local code=$?
     # A private key on another machine must never stay behind, also not
