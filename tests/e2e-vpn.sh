@@ -43,9 +43,12 @@ PROFILES="wg-easy wireguard"
 WORK_DIR=""
 PROJECT=""
 CLIENTS=()
+HOST_CLIENT=""
+HOST_INTERFACE=""
 
 TEST_VPN_PORT=51900
 TEST_SUBNET="10.99.0.0/24"
+TEST_WG_EASY_SUBNET="10.97.0.0/24"
 TEST_PIHOLE_IP="10.99.0.100"
 TEST_UNBOUND_IP="10.99.0.200"
 TEST_UI_PORT=18081
@@ -75,7 +78,7 @@ while [[ $# -gt 0 ]]; do
             }
             ;;
         -h | --help)
-            grep '^#' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,/^$/ { s/^# \{0,1\}//; p; }' "$0"
             exit 0
             ;;
         *)
@@ -100,9 +103,30 @@ info() { printf '    ....... %s\n' "$*"; }
 
 REMOTE_ACTIVE=""
 
+host_cleanup() {
+    [[ -z ${HOST_INTERFACE:-} ]] && return 0
+
+    if [[ -n ${HOST_CLIENT:-} ]] && docker inspect "$HOST_CLIENT" > /dev/null 2>&1; then
+        docker exec "$HOST_CLIENT" wg-quick down "$HOST_INTERFACE" > /dev/null 2>&1 || true
+        docker exec "$HOST_CLIENT" ip link del "$HOST_INTERFACE" > /dev/null 2>&1 || true
+        docker rm -f "$HOST_CLIENT" > /dev/null 2>&1 || true
+    fi
+
+    # A killed host-network container can leave the interface in the host
+    # namespace. Make a final best-effort removal, including after Ctrl-C.
+    if ip link show "$HOST_INTERFACE" > /dev/null 2>&1; then
+        ip link del "$HOST_INTERFACE" > /dev/null 2>&1 \
+            || sudo -n ip link del "$HOST_INTERFACE" > /dev/null 2>&1 \
+            || true
+    fi
+    HOST_CLIENT=""
+    HOST_INTERFACE=""
+}
+
 teardown() {
     # The option --keep stops all clean up, so a failure can be examined.
     [[ $KEEP -eq 1 ]] && return 0
+    host_cleanup
     for c in "${CLIENTS[@]:-}"; do
         [[ -n $c ]] && docker rm -f "$c" > /dev/null 2>&1
     done
@@ -124,6 +148,9 @@ cleanup() {
     if [[ -n ${REMOTE_ACTIVE:-} ]] && declare -f remote_cleanup > /dev/null; then
         remote_cleanup
     fi
+    # Never keep a host-network interface because it can change the routing
+    # of the developer's computer.
+    host_cleanup
     if [[ $KEEP -eq 1 && -n $WORK_DIR ]]; then
         say "The option --keep is active. The test keeps these items:"
         echo "  Directory: $WORK_DIR"
@@ -172,6 +199,7 @@ start_stack() {
     set_var PIHOLE_PASSWORD "$TEST_PASSWORD"
     set_var WG_EASY_PASSWORD "$TEST_PASSWORD"
     set_var WIREHOLE_SUBNET "$TEST_SUBNET"
+    set_var VPN_SUBNET "$TEST_WG_EASY_SUBNET"
     set_var PIHOLE_IPV4_ADDRESS "$TEST_PIHOLE_IP"
     set_var UNBOUND_IPV4_ADDRESS "$TEST_UNBOUND_IP"
     set_var WIREGUARD_INTERNAL_SUBNET "10.98.13.0"
@@ -321,10 +349,12 @@ connect_host_client() {
     # The Docker network of the stack must stay out of this list. This
     # computer already has a direct route to it, and a second route for the
     # same network fails with "File exists".
-    conf="$(sed -E "s|^ *AllowedIPs *=.*|AllowedIPs = 10.8.0.0/24, 10.98.13.0/24|" <<< "$conf")"
+    conf="$(sed -E "s|^ *AllowedIPs *=.*|AllowedIPs = ${TEST_WG_EASY_SUBNET}, 10.98.13.0/24|" <<< "$conf")"
     conf="$(sed -E "/^ *DNS *=/d" <<< "$conf")"
 
     CLIENTS+=("$name")
+    HOST_CLIENT="$name"
+    HOST_INTERFACE="$iface"
     docker run -d --name "$name" --network host --privileged \
         -v /lib/modules:/lib/modules:ro \
         --entrypoint sleep alpine:3.20 infinity > /dev/null 2>&1
@@ -332,7 +362,7 @@ connect_host_client() {
     if ! docker exec "$name" apk add --no-cache \
         wireguard-tools iproute2 iptables bind-tools > /dev/null 2>&1; then
         bad "Could not install the client tools."
-        docker rm -f "$name" > /dev/null 2>&1
+        host_cleanup
         return 1
     fi
 
@@ -343,7 +373,7 @@ connect_host_client() {
     else
         bad "The interface did not start on this computer"
         tail -5 /tmp/e2e-hostwg.log
-        docker rm -f "$name" > /dev/null 2>&1
+        host_cleanup
         return 1
     fi
 
@@ -377,9 +407,7 @@ connect_host_client() {
 
     # Always remove the interface. It lives on this computer, not in a
     # container, so it must not stay behind.
-    docker exec "$name" wg-quick down "$iface" > /dev/null 2>&1
-    docker exec "$name" ip link del "$iface" > /dev/null 2>&1
-    docker rm -f "$name" > /dev/null 2>&1
+    host_cleanup
 
     if ip link show "$iface" > /dev/null 2>&1; then
         bad "The interface $iface stayed on this computer. Remove it with: sudo ip link del $iface"
@@ -438,7 +466,7 @@ connect_remote_client() {
     fi
 
     conf="$(sed -E "s|^ *Endpoint *=.*|Endpoint = ${endpoint}:${TEST_VPN_PORT}|" <<< "$conf")"
-    conf="$(sed -E "s|^ *AllowedIPs *=.*|AllowedIPs = 10.8.0.0/24, 10.98.13.0/24|" <<< "$conf")"
+    conf="$(sed -E "s|^ *AllowedIPs *=.*|AllowedIPs = ${TEST_WG_EASY_SUBNET}, 10.98.13.0/24|" <<< "$conf")"
     conf="$(sed -E "/^ *DNS *=/d" <<< "$conf")"
 
     # Always remove the interface on the other computer, also after a fault
@@ -603,9 +631,23 @@ for c in d:
     fi
     ok "The API lists $(wc -l <<< "$ids") clients"
 
+    # Use a non-default subnet. This catches a wg-easy v15 initialization
+    # requirement: it ignores INIT_IPV4_CIDR unless INIT_IPV6_CIDR is present.
+    local expected_prefix="${TEST_WG_EASY_SUBNET%0/24}"
+    if awk '{print $3}' <<< "$ids" | grep -qv "^${expected_prefix}"; then
+        bad "wg-easy ignored VPN_SUBNET=$TEST_WG_EASY_SUBNET"
+    else
+        ok "wg-easy assigned every client from $TEST_WG_EASY_SUBNET"
+    fi
+
     # The server holds the first address of the client network.
     local server_ip
     server_ip="$(awk '{print $3}' <<< "$ids" | head -1 | awk -F. '{print $1"."$2"."$3".1"}')"
+    if [[ $server_ip == "${expected_prefix}1" ]]; then
+        ok "wg-easy listens on the custom VPN address $server_ip"
+    else
+        bad "wg-easy has the unexpected VPN address '$server_ip'"
+    fi
 
     local first_conf=""
     while read -r id cname _addr; do
@@ -617,6 +659,21 @@ for c in d:
         else
             bad "Could not download the configuration for '$cname'"
             continue
+        fi
+        if grep -Eq "^Address[[:space:]]*=[[:space:]]*${expected_prefix}[0-9]+/" <<< "$conf"; then
+            ok "'$cname' received the custom IPv4 subnet"
+        else
+            bad "'$cname' did not receive the custom IPv4 subnet"
+        fi
+        if grep -Eq '^Address[[:space:]]*=.*:' <<< "$conf"; then
+            bad "'$cname' received an IPv6 address even though IPv6 is disabled"
+        else
+            ok "'$cname' received no unusable IPv6 address"
+        fi
+        if grep -Eq '^AllowedIPs[[:space:]]*=.*::/0' <<< "$conf"; then
+            ok "'$cname' sends IPv6 into the tunnel to prevent leaks"
+        else
+            bad "'$cname' can leak IPv6 outside the tunnel"
         fi
         [[ -z $first_conf ]] && first_conf="$conf"
         connect_and_test_client "$cname" "$conf" "$server_ip"
@@ -705,6 +762,102 @@ run_wireguard() {
 }
 
 # ---------------------------------------------------------------------------
+# Start a real LinuxServer installation, reshape it into the legacy on-disk
+# layout, migrate it, and reconnect with the exact old client configuration.
+# This proves that migration does not regenerate the server or peer keys.
+# ---------------------------------------------------------------------------
+run_migration() {
+    say "Migration from the legacy LinuxServer layout"
+
+    if ! start_stack wireguard "legacy"; then
+        bad "The migration fixture did not start"
+        tail -20 /tmp/e2e-up.log
+        return 1
+    fi
+
+    local container old_conf="" old_public=""
+    container="$(cd "$WORK_DIR" && docker compose -p "$PROJECT" ps -q wireguard | head -1)"
+    for _ in $(seq 1 30); do
+        old_conf="$(docker exec "$container" cat /config/peer_legacy/peer_legacy.conf 2> /dev/null)"
+        old_public="$(docker exec "$container" wg show wg0 public-key 2> /dev/null)"
+        [[ -n $old_conf && -n $old_public ]] && break
+        sleep 2
+    done
+    if [[ -z $old_conf || -z $old_public ]]; then
+        bad "The migration fixture did not generate its keys"
+        teardown
+        return 1
+    fi
+    ok "Made a legacy server and client configuration"
+
+    (cd "$WORK_DIR" && docker compose -p "$PROJECT" down) > /dev/null 2>&1
+    mv "$WORK_DIR/data/wireguard" "$WORK_DIR/config"
+    mv "$WORK_DIR/data/pihole" "$WORK_DIR/etc-pihole"
+    rmdir "$WORK_DIR/data" 2> /dev/null || true
+    mkdir -p "$WORK_DIR/scripts"
+    cp "$REPO_DIR/scripts/migrate-from-v1.sh" "$WORK_DIR/scripts/"
+    chmod +x "$WORK_DIR/scripts/migrate-from-v1.sh"
+
+    # These two values existed in the old sample .env but were never passed
+    # to the old WireGuard container. Deliberately make them wrong: migration
+    # must use the active peer endpoint and preserve the existing peer files.
+    {
+        printf 'WEBPASSWORD=%s\n' "$TEST_PASSWORD"
+        printf 'TIMEZONE=Etc/UTC\n'
+        printf 'WIREGUARD_SERVER_PORT=52099\n'
+        printf 'WIREGUARD_PEERS=99\n'
+    } > "$WORK_DIR/.env"
+
+    if (cd "$WORK_DIR" && ./scripts/migrate-from-v1.sh) > /tmp/e2e-migration.log 2>&1; then
+        ok "The migration script completed"
+    else
+        bad "The migration script failed"
+        tail -30 /tmp/e2e-migration.log
+        teardown
+        return 1
+    fi
+
+    if grep -Fqx "VPN_PORT=$TEST_VPN_PORT" "$WORK_DIR/.env"; then
+        ok "Migration kept the active endpoint port"
+    else
+        bad "Migration activated the old, previously ignored port"
+    fi
+    if grep -qx 'WIREGUARD_PEERS=' "$WORK_DIR/.env"; then
+        ok "Migration selected key-preservation mode"
+    else
+        bad "Migration could regenerate the existing peer keys"
+    fi
+
+    if (cd "$WORK_DIR" && docker compose -p "$PROJECT" up -d --wait --wait-timeout 240) \
+        > /tmp/e2e-migrated-up.log 2>&1; then
+        ok "The migrated stack started"
+    else
+        bad "The migrated stack did not start"
+        tail -30 /tmp/e2e-migrated-up.log
+        teardown
+        return 1
+    fi
+
+    container="$(cd "$WORK_DIR" && docker compose -p "$PROJECT" ps -q wireguard | head -1)"
+    local new_public new_conf
+    new_public="$(docker exec "$container" wg show wg0 public-key 2> /dev/null)"
+    new_conf="$(docker exec "$container" cat /config/peer_legacy/peer_legacy.conf 2> /dev/null)"
+    if [[ $new_public == "$old_public" ]]; then
+        ok "Migration preserved the server public key"
+    else
+        bad "Migration changed the server key"
+    fi
+    if [[ $new_conf == "$old_conf" ]]; then
+        ok "Migration preserved the exact client configuration"
+    else
+        bad "Migration changed the existing client configuration"
+    fi
+
+    connect_and_test_client "migrated-legacy" "$old_conf" "10.98.13.1"
+    teardown
+}
+
+# ---------------------------------------------------------------------------
 say "Check this computer"
 # ---------------------------------------------------------------------------
 
@@ -731,6 +884,10 @@ for p in $PROFILES; do
             ;;
     esac
 done
+
+if [[ " $PROFILES " == *" wireguard "* ]]; then
+    run_migration
+fi
 
 # ---------------------------------------------------------------------------
 say "Result"

@@ -24,7 +24,7 @@ for arg in "$@"; do
     case "$arg" in
         --force) FORCE=1 ;;
         -h | --help)
-            grep '^#' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,/^$/ { s/^# \{0,1\}//; p; }' "$0"
             exit 0
             ;;
         *)
@@ -52,9 +52,11 @@ fi
 # the random device of the kernel.
 make_password() {
     if command -v openssl > /dev/null 2>&1; then
-        openssl rand -base64 24 | tr -d '\n/+=' | cut -c1-32
+        openssl rand -hex 16
     else
-        LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32
+        # Read a finite amount first. An endless "tr | head" pipeline fails
+        # with SIGPIPE because this script uses "set -o pipefail".
+        od -An -N16 -tx1 /dev/urandom | tr -d ' \n'
     fi
 }
 

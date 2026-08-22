@@ -30,7 +30,7 @@ PLAYWRIGHT_PKG="playwright@1.55.0"
 for arg in "${@:-}"; do
     case "$arg" in
         -h | --help)
-            grep '^#' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,/^$/ { s/^# \{0,1\}//; p; }' "$0"
             exit 0
             ;;
         "") ;;

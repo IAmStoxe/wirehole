@@ -17,10 +17,12 @@ git pull
 docker compose up -d
 ```
 
-The script stops the old containers, copies your WireGuard keys and your
-Pi-hole data to the new locations, and writes a new `.env` from your old
-settings. It copies and never deletes. Your old directories stay in place
-as a backup, and your old `.env` becomes `.env.v1.backup`.
+The script validates the new configuration before it stops anything. It
+copies your WireGuard keys and Pi-hole data, keeps the endpoint that the old
+clients actually use, and starts the LinuxServer profile in preservation
+mode. It removes the stopped legacy containers only after the files and new
+configuration pass validation. Your old data directories stay in place, and
+your old `.env` becomes `.env.v1.backup`.
 
 Check the result:
 
@@ -54,8 +56,8 @@ The stack also fixed variables that never worked: the old `.env` set
 | ----------------------- | ------------------ |
 | `WEBPASSWORD`           | `PIHOLE_PASSWORD`  |
 | `TIMEZONE`              | `TZ`               |
-| `WIREGUARD_SERVER_PORT` | `VPN_PORT`         |
-| `WIREGUARD_PEERS`       | `WIREGUARD_PEERS`  |
+| `WIREGUARD_SERVER_PORT` | ignored before; the active endpoint becomes `VPN_PORT` |
+| `WIREGUARD_PEERS`       | ignored before; existing peer files are preserved |
 | `WIREGUARD_PEER_DNS`    | removed, automatic |
 | `WGUI_*`                | removed with wireguard-ui |
 
@@ -96,10 +98,14 @@ Set at least these values in the new `.env`:
 - `COMPOSE_PROFILES=wireguard`, so your existing keys stay in use.
 - `VPN_HOST`: the address your devices connect to. Look at the `Endpoint`
   line in any `config/peer_*/peer_*.conf`.
+- `VPN_PORT`: the port in that same `Endpoint` line. Do not copy the old
+  `WIREGUARD_SERVER_PORT`; the old Compose file did not use it.
 - `PIHOLE_PASSWORD`: your old `WEBPASSWORD`.
 - `WG_EASY_PASSWORD`: any strong value. The stack refuses to start without
   it, also when the wg-easy panel does not run.
-- `TZ`, `VPN_PORT`, `WIREGUARD_PEERS`, `PUID`, `PGID`: your old values.
+- `WIREGUARD_PEERS=`: leave this value empty. That tells the LinuxServer
+  image to load the copied `wg0.conf` without regenerating server or peer keys.
+- `TZ`, `PUID`, and `PGID`: carry over the old values when you set them.
 
 Then start and check:
 

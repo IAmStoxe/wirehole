@@ -409,6 +409,11 @@ WIREGUARD_PEERS=3
 WIREGUARD_PEERS=phone,laptop,tablet
 ```
 
+An empty `WIREGUARD_PEERS=` is a preservation mode for an existing
+LinuxServer configuration. New installations should use a number or a list.
+The migration script selects the empty value so the image loads the copied
+`wg0.conf` without regenerating its keys or clients.
+
 Read a QR code from the log:
 
 ```bash
@@ -467,8 +472,9 @@ each device.
 
 ### IPv6 and DNS leaks
 
-The default value contains `::/0`. This stack carries IPv4 traffic only.
-Therefore the IPv6 traffic of a client goes into the tunnel and stops there.
+The default value contains `::/0`. This stack carries IPv4 traffic only, and
+wg-easy does not assign an IPv6 address to clients. Therefore any IPv6 route
+in an imported client configuration goes into the tunnel and stops there.
 
 This behavior is correct and safe. A client with IPv6 tries IPv6 first,
 receives no answer, and then uses IPv4 through the VPN. Your real address
@@ -768,9 +774,15 @@ it. Each client is a container that behaves like a phone.
 ```
 
 It tests both back ends and makes two devices for each one, because a stack
-that connects the first device and fails on the second is a common fault. For
-every client it checks the handshake, traffic through the tunnel, DNS through
-Pi-hole, ad blocking, and reaching the internet.
+that connects the first device and fails on the second is a common fault. It
+also gives wg-easy a non-default client subnet and checks the exact addresses
+and IPv6 leak protection in the downloaded configurations. For every client
+it checks the handshake, traffic through the tunnel, DNS through Pi-hole, ad
+blocking, and reaching the internet.
+
+For the LinuxServer back end, the test then creates a legacy installation,
+runs the real migration script, compares the server key and client file, and
+reconnects with the exact pre-migration configuration.
 
 The test connects over three different paths, because each one can fail on
 its own:

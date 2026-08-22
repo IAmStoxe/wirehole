@@ -294,5 +294,6 @@ finally {
     }
     else {
         Write-Host "`nSome tests failed. Read the suggestions above.`n" -ForegroundColor Red
+        exit 1
     }
 }

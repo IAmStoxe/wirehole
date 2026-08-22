@@ -191,7 +191,12 @@ services:
       INIT_PORT: ${VPN_PORT:-51820}
       # Give Pi-hole to the clients as their DNS server.
       INIT_DNS: ${PIHOLE_IPV4_ADDRESS:-10.2.0.100}
+      # wg-easy applies the IPv4 and IPv6 CIDRs as one group. Both values must
+      # be present, also when IPv6 is disabled. This stack carries IPv4 only,
+      # so the IPv6 CIDR is an unused placeholder.
       INIT_IPV4_CIDR: ${VPN_SUBNET:-10.8.0.0/24}
+      INIT_IPV6_CIDR: 'fdcc:ad94:bacf:61a4::cafe:0/112'
+      DISABLE_IPV6: 'true'
       # The networks that the clients send through the VPN.
       # The value "0.0.0.0/0" is a full tunnel. It sends all traffic.
       # Read the file README.md for the split tunnel values.
@@ -254,7 +259,10 @@ services:
       # The number of clients, or a list of client names.
       # Example of a number: 3
       # Example of a list: phone,laptop,tablet
-      PEERS: ${WIREGUARD_PEERS:-1}
+      # An explicitly empty value keeps an existing server configuration.
+      # The migration script uses that mode so LinuxServer does not regenerate
+      # the old server and peer keys. An unset value still makes one peer.
+      PEERS: ${WIREGUARD_PEERS-1}
       # Give Pi-hole to the clients as their DNS server.
       PEERDNS: ${PIHOLE_IPV4_ADDRESS:-10.2.0.100}
       # The internal network of the VPN clients.

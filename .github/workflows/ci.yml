@@ -38,6 +38,24 @@ jobs:
           sudo apt-get install -y shellcheck
           shellcheck scripts/*.sh tests/*.sh
 
+      - name: Run the setup script regressions
+        run: ./tests/script-tests.sh
+
+      - name: Check the Windows test syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path tests/windows-client-test.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -ne 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+
       - name: Check that the compose file is valid
         run: |
           cp .env.example .env
@@ -265,7 +283,7 @@ jobs:
   e2e:
     name: Connect a real VPN client
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     # This job answers the question that matters to a user: does a phone
     # connect and get working, filtered internet? It starts the stack, makes
     # client configurations the same way a user makes them, and connects real
