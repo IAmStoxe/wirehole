@@ -241,17 +241,29 @@ fi
 
 ENDPOINT=""
 ENDPOINT_CANDIDATE=""
-while IFS= read -r -d '' peer_file; do
-    ENDPOINT_CANDIDATE="$(read_endpoint "$peer_file")"
-    # Ignore LinuxServer's template value ${SERVERURL}:${SERVERPORT} and any
-    # other incomplete entry. Only an endpoint with a numeric port describes
-    # what an existing client actually uses.
-    if [[ $ENDPOINT_CANDIDATE =~ ^\[[^]]+\]:[0-9]+$ \
-        || $ENDPOINT_CANDIDATE =~ ^[^:]+:[0-9]+$ ]]; then
-        ENDPOINT="$ENDPOINT_CANDIDATE"
-        break
-    fi
-done < <(find config -type f -name '*.conf' -print0 2> /dev/null || true)
+scan_endpoint_files() {
+    local peer_file
+
+    while IFS= read -r -d '' peer_file; do
+        ENDPOINT_CANDIDATE="$(read_endpoint "$peer_file")"
+        # Ignore LinuxServer's template value ${SERVERURL}:${SERVERPORT} and
+        # any other incomplete entry. Only an endpoint with a numeric port
+        # describes what an existing client actually uses.
+        if [[ $ENDPOINT_CANDIDATE =~ ^\[[^]]+\]:[0-9]+$ \
+            || $ENDPOINT_CANDIDATE =~ ^[^:]+:[0-9]+$ ]]; then
+            ENDPOINT="$ENDPOINT_CANDIDATE"
+            return 0
+        fi
+    done
+}
+
+scan_endpoint_files < <(find config -type f -name '*.conf' -print0 2> /dev/null || true)
+if [[ -z $ENDPOINT ]] && command -v sudo > /dev/null 2>&1; then
+    # A legacy container may have written peer directories for PUID 1000 while
+    # the host account has another UID. Retry discovery with the same access
+    # that copy_directory will need later.
+    scan_endpoint_files < <(sudo find config -type f -name '*.conf' -print0 2> /dev/null || true)
+fi
 
 ENDPOINT_HOST=""
 ENDPOINT_PORT=""
