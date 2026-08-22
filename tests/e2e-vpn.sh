@@ -171,6 +171,9 @@ trap cleanup EXIT
 # ---------------------------------------------------------------------------
 start_stack() {
     local profile="$1" peers="${2:-}"
+    local stack_subnet="${3:-$TEST_SUBNET}"
+    local stack_pihole_ip="${4:-$TEST_PIHOLE_IP}"
+    local stack_unbound_ip="${5:-$TEST_UNBOUND_IP}"
 
     WORK_DIR="$(mktemp -d)"
     PROJECT="wirehole-e2e-$$-${profile}"
@@ -199,10 +202,10 @@ start_stack() {
     set_var VPN_PORT "$TEST_VPN_PORT"
     set_var PIHOLE_PASSWORD "$TEST_PASSWORD"
     set_var WG_EASY_PASSWORD "$TEST_PASSWORD"
-    set_var WIREHOLE_SUBNET "$TEST_SUBNET"
+    set_var WIREHOLE_SUBNET "$stack_subnet"
     set_var VPN_SUBNET "$TEST_WG_EASY_SUBNET"
-    set_var PIHOLE_IPV4_ADDRESS "$TEST_PIHOLE_IP"
-    set_var UNBOUND_IPV4_ADDRESS "$TEST_UNBOUND_IP"
+    set_var PIHOLE_IPV4_ADDRESS "$stack_pihole_ip"
+    set_var UNBOUND_IPV4_ADDRESS "$stack_unbound_ip"
     set_var WIREGUARD_INTERNAL_SUBNET "10.98.13.0"
     set_var PIHOLE_WEB_PORT "$TEST_PIHOLE_PORT"
     set_var WG_EASY_UI_PORT "$TEST_UI_PORT"
@@ -220,6 +223,7 @@ start_stack() {
 # ---------------------------------------------------------------------------
 connect_and_test_client() {
     local label="$1" conf="$2" server_vpn_ip="$3" endpoint="${4:-}"
+    local dns_ip="${5:-$TEST_PIHOLE_IP}"
     local suffix name
     suffix="$(tr -dc 'a-z0-9' <<< "$label" | head -c 12)"
     name="wirehole-e2e-client-$$-${suffix}"
@@ -291,14 +295,14 @@ connect_and_test_client() {
     fi
 
     local r
-    r="$(docker exec "$name" dig +short +time=8 example.com @"$TEST_PIHOLE_IP" 2> /dev/null | head -1)"
+    r="$(docker exec "$name" dig +short +time=8 example.com @"$dns_ip" 2> /dev/null | head -1)"
     if [[ $r =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         ok "$label: resolves names through Pi-hole ($r)"
     else
         bad "$label: cannot use Pi-hole through the tunnel"
     fi
 
-    r="$(docker exec "$name" dig +short +time=8 doubleclick.net @"$TEST_PIHOLE_IP" 2> /dev/null | head -1)"
+    r="$(docker exec "$name" dig +short +time=8 doubleclick.net @"$dns_ip" 2> /dev/null | head -1)"
     if [[ $r == "0.0.0.0" ]]; then
         ok "$label: advertisements are blocked"
     else
@@ -770,7 +774,10 @@ run_wireguard() {
 run_migration() {
     say "Migration from the legacy LinuxServer layout"
 
-    if ! start_stack wireguard "legacy"; then
+    # The old Compose file hardcoded this Docker network and Pi-hole address.
+    # Use the real legacy topology so the old client DNS setting remains valid
+    # after migration to the new defaults.
+    if ! start_stack wireguard "legacy" "10.2.0.0/24" "10.2.0.100" "10.2.0.200"; then
         bad "The migration fixture did not start"
         tail -20 /tmp/e2e-up.log
         return 1
@@ -859,7 +866,7 @@ run_migration() {
         bad "Migration changed the existing client configuration"
     fi
 
-    connect_and_test_client "migrated-legacy" "$old_conf" "10.98.13.1"
+    connect_and_test_client "migrated-legacy" "$old_conf" "10.98.13.1" "" "10.2.0.100"
     teardown
 }
 
