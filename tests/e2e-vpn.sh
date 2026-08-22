@@ -176,7 +176,8 @@ start_stack() {
     PROJECT="wirehole-e2e-$$-${profile}"
     cp "$REPO_DIR/docker-compose.yml" "$WORK_DIR/"
     cp -r "$REPO_DIR/unbound" "$WORK_DIR/"
-    cp "$REPO_DIR/.env.example" "$WORK_DIR/.env"
+    cp "$REPO_DIR/.env.example" "$WORK_DIR/"
+    cp "$WORK_DIR/.env.example" "$WORK_DIR/.env"
 
     # The compose file gives the network and the containers fixed names.
     # A test with those names would join the network of a live stack and
@@ -791,9 +792,12 @@ run_migration() {
     ok "Made a legacy server and client configuration"
 
     (cd "$WORK_DIR" && docker compose -p "$PROJECT" down) > /dev/null 2>&1
-    mv "$WORK_DIR/data/wireguard" "$WORK_DIR/config"
-    mv "$WORK_DIR/data/pihole" "$WORK_DIR/etc-pihole"
-    rmdir "$WORK_DIR/data" 2> /dev/null || true
+    # Docker creates the bind-mount parent as root on a fresh runner. Use
+    # sudo only for this fixture reshaping; the migration itself must handle
+    # the legacy ownership in the same way a user's installation does.
+    sudo mv "$WORK_DIR/data/wireguard" "$WORK_DIR/config"
+    sudo mv "$WORK_DIR/data/pihole" "$WORK_DIR/etc-pihole"
+    sudo rmdir "$WORK_DIR/data" 2> /dev/null || true
     mkdir -p "$WORK_DIR/scripts"
     cp "$REPO_DIR/scripts/migrate-from-v1.sh" "$WORK_DIR/scripts/"
     chmod +x "$WORK_DIR/scripts/migrate-from-v1.sh"
