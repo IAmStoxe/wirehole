@@ -1,4 +1,10 @@
-# WireHole
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/wirehole-logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/wirehole-logo-light.png">
+    <img alt="WireHole — private VPN, filtered DNS, one clean tunnel" src="assets/wirehole-logo-light.png" width="760">
+  </picture>
+</h1>
 
 > **Upgrading from an older WireHole?** The 2026 rewrite changed the
 > layout. Do not just pull and restart. Read [UPGRADING.md](UPGRADING.md) -

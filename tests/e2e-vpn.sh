@@ -821,10 +821,12 @@ run_migration() {
         return 1
     fi
 
-    if grep -Fqx "VPN_PORT=$TEST_VPN_PORT" "$WORK_DIR/.env"; then
+    local migrated_port
+    migrated_port="$(awk -F= '$1 == "VPN_PORT" { print $2 }' "$WORK_DIR/.env")"
+    if [[ $migrated_port == "$TEST_VPN_PORT" ]]; then
         ok "Migration kept the active endpoint port"
     else
-        bad "Migration activated the old, previously ignored port"
+        bad "Migration used port '$migrated_port' instead of the active port '$TEST_VPN_PORT'"
     fi
     if grep -qx 'WIREGUARD_PEERS=' "$WORK_DIR/.env"; then
         ok "Migration selected key-preservation mode"

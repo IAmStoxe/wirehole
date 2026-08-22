@@ -240,9 +240,17 @@ fi
 [[ -n $ACTIVE_CONFIG ]] || die "no active wg0.conf was found; stopping now to avoid changing your keys"
 
 ENDPOINT=""
+ENDPOINT_CANDIDATE=""
 while IFS= read -r -d '' peer_file; do
-    ENDPOINT="$(read_endpoint "$peer_file")"
-    [[ -z $ENDPOINT ]] || break
+    ENDPOINT_CANDIDATE="$(read_endpoint "$peer_file")"
+    # Ignore LinuxServer's template value ${SERVERURL}:${SERVERPORT} and any
+    # other incomplete entry. Only an endpoint with a numeric port describes
+    # what an existing client actually uses.
+    if [[ $ENDPOINT_CANDIDATE =~ ^\[[^]]+\]:[0-9]+$ \
+        || $ENDPOINT_CANDIDATE =~ ^[^:]+:[0-9]+$ ]]; then
+        ENDPOINT="$ENDPOINT_CANDIDATE"
+        break
+    fi
 done < <(find config -type f -name '*.conf' -print0 2> /dev/null || true)
 
 ENDPOINT_HOST=""
