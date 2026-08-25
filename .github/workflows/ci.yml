@@ -131,6 +131,22 @@ jobs:
           sed -i -E 's|^(WIREGUARD_VERSION)=.*|\1=latest|' .env
           grep -E '^(PIHOLE|UNBOUND|WG_EASY|WIREGUARD)_VERSION=' .env
 
+      - name: Pull the images with retries
+        run: |
+          # Public registries can briefly throttle parallel CI jobs. Retry the
+          # pull, but keep a real missing image or bad tag as a hard failure.
+          for attempt in 1 2 3; do
+            if docker compose pull; then
+              exit 0
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo "ERROR: The images did not pull after 3 attempts."
+              exit 1
+            fi
+            echo "Image pull attempt $attempt failed. Retrying."
+            sleep $((attempt * 10))
+          done
+
       - name: Start the stack
         run: docker compose up -d --wait --wait-timeout 180
 
@@ -257,6 +273,20 @@ jobs:
           sed -i 's|^VPN_HOST=.*|VPN_HOST=192.0.2.1|' .env
           sed -i 's|^PIHOLE_PASSWORD=.*|PIHOLE_PASSWORD=ci-test-password|' .env
           sed -i 's|^WG_EASY_PASSWORD=.*|WG_EASY_PASSWORD=ci-test-password|' .env
+
+      - name: Pull the images with retries
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose pull; then
+              exit 0
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo "ERROR: The images did not pull after 3 attempts."
+              exit 1
+            fi
+            echo "Image pull attempt $attempt failed. Retrying."
+            sleep $((attempt * 10))
+          done
 
       - name: Start the stack
         run: docker compose up -d --wait --wait-timeout 180
