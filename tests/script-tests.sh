@@ -45,4 +45,32 @@ if PATH="$FAKE_BIN" "$PROJECT_DIR/scripts/generate-secrets.sh" > /dev/null 2>&1;
     exit 1
 fi
 
-echo "OK: setup script regressions passed."
+# Keep the three places that name a pinned image version in sync. A mismatch
+# gives beginners a command that silently changes the version they tested.
+for version_var in PIHOLE_VERSION UNBOUND_VERSION WG_EASY_VERSION WIREGUARD_VERSION; do
+    expected="$(awk -F= -v key="$version_var" '$1 == key { print $2 }' "$REPO_DIR/.env.example")"
+    [[ -n $expected ]] || {
+        echo "ERROR: $version_var has no value in .env.example" >&2
+        exit 1
+    }
+    grep -Fq "\${${version_var}:-${expected}}" "$REPO_DIR/docker-compose.yml" || {
+        echo "ERROR: $version_var differs between .env.example and docker-compose.yml" >&2
+        exit 1
+    }
+    grep -Fqx "${version_var}=${expected}" "$REPO_DIR/README.md" || {
+        echo "ERROR: $version_var differs between .env.example and README.md" >&2
+        exit 1
+    }
+done
+
+# Every variable read explicitly by Compose must be present in the example
+# file. This keeps the example file a complete configuration reference.
+while read -r compose_var; do
+    grep -q "^${compose_var}=" "$REPO_DIR/.env.example" || {
+        echo "ERROR: $compose_var is used by Compose but missing from .env.example" >&2
+        exit 1
+    }
+done < <(grep -oE '\$\{[A-Z][A-Z0-9_]*' "$REPO_DIR/docker-compose.yml" \
+    | sed 's/^${//' | sort -u)
+
+echo "OK: setup and configuration documentation regressions passed."

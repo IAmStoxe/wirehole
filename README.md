@@ -304,14 +304,19 @@ access.
 Open the VPN web interface, find the device in the list, and delete it. The
 change takes effect at once, and the old configuration stops working.
 
-For the `wireguard` profile, a smaller `WIREGUARD_PEERS` number does **not**
-remove access. The old keys stay in `./data/wireguard`. Delete the directory
-of that client, then restart the service:
+For the `wireguard` profile, use names in `WIREGUARD_PEERS`. Remove the lost
+device from that list, then recreate the service. The other devices keep their
+keys, and the removed configuration stops working.
 
 ```bash
-sudo rm -rf data/wireguard/peer_phone
-docker compose restart wireguard
+nano .env
+docker compose up -d --force-recreate wireguard
 ```
+
+For example, change `phone,laptop,tablet` to `laptop,tablet` to remove the
+phone. After the service starts, you can delete the unused directory
+`data/wireguard/peer_phone`. If you used a number instead of names, lowering
+the number removes only the devices at the end of the numbered list.
 
 ### Check that it works
 
@@ -504,6 +509,17 @@ Test your VPN with these steps:
 All settings are in the file `.env`. The file `.env.example` describes each
 setting. This section shows the settings that most users change.
 
+### Make a change
+
+1. Open `.env` and change one value.
+2. Run `docker compose up -d` to apply it.
+3. Run `./scripts/wirehole-doctor.sh` to check the result.
+
+There is one exception. The wg-easy settings for the server, including its
+address, port, client network, DNS server, and allowed networks, are used only
+at the first start. Change those settings in the VPN web interface after the
+stack has run once. Download each changed client configuration again.
+
 ### Necessary settings
 
 | Variable           | Description                                        |
@@ -557,7 +573,7 @@ result on every computer. The file `.env` holds the versions:
 ```ini
 PIHOLE_VERSION=2026.07.2
 UNBOUND_VERSION=1.26.0
-WG_EASY_VERSION=15
+WG_EASY_VERSION=15.4.0
 WIREGUARD_VERSION=1.0.20260223-r0-ls120
 ```
 
@@ -717,8 +733,8 @@ docker compose up -d
 
 ## Test that everything works
 
-The project has two scripts. One checks your own stack. The other proves
-that a real device can connect.
+The doctor checks your own stack. The automated tests prove real VPN clients,
+the migration, and both web interfaces.
 
 ### What the tests cover, and what they cannot
 

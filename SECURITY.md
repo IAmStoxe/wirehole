@@ -105,8 +105,8 @@ place. Set the permission 600 on the file `.env`:
 chmod 600 .env
 ```
 
-A person with the directory `./data` can read your VPN traffic. Encrypt your
-backups of this directory.
+A person with the directory `./data` can impersonate your server or a client
+and can connect to your VPN. Encrypt your backups of this directory.
 
 ### Open the firewall for one port only
 

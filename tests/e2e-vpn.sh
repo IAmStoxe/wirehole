@@ -169,6 +169,15 @@ trap cleanup EXIT
 # ---------------------------------------------------------------------------
 # Build a stack in a temporary directory.
 # ---------------------------------------------------------------------------
+set_env_var() {
+    local key="$1" value="$2"
+    VALUE="$value" awk -v key="$key" '
+        BEGIN { FS = "=" }
+        $1 == key && substr($0, 1, 1) != "#" { print key "=" ENVIRON["VALUE"]; next }
+        { print }
+    ' "$WORK_DIR/.env" > "$WORK_DIR/.env.tmp" && mv "$WORK_DIR/.env.tmp" "$WORK_DIR/.env"
+}
+
 start_stack() {
     local profile="$1" peers="${2:-}"
     local stack_subnet="${3:-$TEST_SUBNET}"
@@ -189,28 +198,20 @@ start_stack() {
     # can run on a machine with a running stack.
     sed -i '/^    name: wirehole$/d; /container_name:/d' "$WORK_DIR/docker-compose.yml"
 
-    set_var() {
-        VALUE="$2" awk -v key="$1" '
-            BEGIN { FS = "=" }
-            $1 == key && substr($0, 1, 1) != "#" { print key "=" ENVIRON["VALUE"]; next }
-            { print }
-        ' "$WORK_DIR/.env" > "$WORK_DIR/.env.tmp" && mv "$WORK_DIR/.env.tmp" "$WORK_DIR/.env"
-    }
-
-    set_var COMPOSE_PROFILES "$profile"
-    set_var VPN_HOST "127.0.0.1"
-    set_var VPN_PORT "$TEST_VPN_PORT"
-    set_var PIHOLE_PASSWORD "$TEST_PASSWORD"
-    set_var WG_EASY_PASSWORD "$TEST_PASSWORD"
-    set_var WIREHOLE_SUBNET "$stack_subnet"
-    set_var VPN_SUBNET "$TEST_WG_EASY_SUBNET"
-    set_var PIHOLE_IPV4_ADDRESS "$stack_pihole_ip"
-    set_var UNBOUND_IPV4_ADDRESS "$stack_unbound_ip"
-    set_var WIREGUARD_INTERNAL_SUBNET "10.98.13.0"
-    set_var PIHOLE_WEB_PORT "$TEST_PIHOLE_PORT"
-    set_var WG_EASY_UI_PORT "$TEST_UI_PORT"
-    set_var WEB_BIND_ADDRESS "127.0.0.1"
-    [[ -n $peers ]] && set_var WIREGUARD_PEERS "$peers"
+    set_env_var COMPOSE_PROFILES "$profile"
+    set_env_var VPN_HOST "127.0.0.1"
+    set_env_var VPN_PORT "$TEST_VPN_PORT"
+    set_env_var PIHOLE_PASSWORD "$TEST_PASSWORD"
+    set_env_var WG_EASY_PASSWORD "$TEST_PASSWORD"
+    set_env_var WIREHOLE_SUBNET "$stack_subnet"
+    set_env_var VPN_SUBNET "$TEST_WG_EASY_SUBNET"
+    set_env_var PIHOLE_IPV4_ADDRESS "$stack_pihole_ip"
+    set_env_var UNBOUND_IPV4_ADDRESS "$stack_unbound_ip"
+    set_env_var WIREGUARD_INTERNAL_SUBNET "10.98.13.0"
+    set_env_var PIHOLE_WEB_PORT "$TEST_PIHOLE_PORT"
+    set_env_var WG_EASY_UI_PORT "$TEST_UI_PORT"
+    set_env_var WEB_BIND_ADDRESS "127.0.0.1"
+    [[ -n $peers ]] && set_env_var WIREGUARD_PEERS "$peers"
 
     (cd "$WORK_DIR" && docker compose -p "$PROJECT" up -d --wait --wait-timeout 240) > /tmp/e2e-up.log 2>&1
 }
@@ -317,6 +318,55 @@ connect_and_test_client() {
 
     docker rm -f "$name" > /dev/null 2>&1
     return 0
+}
+
+# Start a fresh client with a configuration that the server has removed. The
+# interface itself can still start, but the server must refuse its handshake.
+connect_and_expect_rejected() {
+    local label="$1" conf="$2" endpoint="${3:-}"
+    local suffix name handshake
+    suffix="$(tr -dc 'a-z0-9' <<< "$label" | head -c 12)"
+    name="wirehole-e2e-rejected-$$-${suffix}"
+    CLIENTS+=("$name")
+
+    head2 "Revoked client '$label'"
+    if [[ -z $endpoint ]]; then
+        endpoint="$(docker network inspect bridge -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2> /dev/null)"
+        [[ -z $endpoint ]] && endpoint="172.17.0.1"
+    fi
+    conf="$(sed -E "s|^ *Endpoint *=.*|Endpoint = ${endpoint}:${TEST_VPN_PORT}|" <<< "$conf")"
+
+    docker rm -f "$name" > /dev/null 2>&1
+    docker run -d --name "$name" --privileged \
+        --sysctl net.ipv4.conf.all.src_valid_mark=1 \
+        -v /lib/modules:/lib/modules:ro \
+        --entrypoint sleep alpine:3.20 infinity > /dev/null 2>&1
+    if ! docker exec "$name" apk add --no-cache \
+        wireguard-tools iproute2 iptables ip6tables > /dev/null 2>&1; then
+        bad "$label: could not install the client tools"
+        return 1
+    fi
+    docker exec -i "$name" sh -c 'cat > /etc/wireguard/wg0.conf' <<< "$conf"
+    docker exec "$name" sh -c 'sed -i "/^ *DNS *=/d" /etc/wireguard/wg0.conf'
+    if ! docker exec "$name" wg-quick up wg0 > /tmp/e2e-rejected.log 2>&1; then
+        bad "$label: the revoked configuration could not start for the rejection test"
+        tail -5 /tmp/e2e-rejected.log
+        return 1
+    fi
+
+    handshake=0
+    for _ in $(seq 1 5); do
+        docker exec "$name" ping -c1 -W1 10.98.13.1 > /dev/null 2>&1 || true
+        handshake="$(docker exec "$name" wg show wg0 latest-handshakes 2> /dev/null | awk '{print $2}')"
+        [[ $handshake != "0" ]] && break
+        sleep 1
+    done
+    if [[ $handshake == "0" ]]; then
+        ok "$label: the removed configuration cannot handshake"
+    else
+        bad "$label: the removed configuration still has VPN access"
+    fi
+    docker rm -f "$name" > /dev/null 2>&1
 }
 
 # ---------------------------------------------------------------------------
@@ -654,7 +704,7 @@ for c in d:
         bad "wg-easy has the unexpected VPN address '$server_ip'"
     fi
 
-    local first_conf=""
+    local first_conf="" first_id=""
     while read -r id cname _addr; do
         [[ -z $id ]] && continue
         local conf
@@ -680,9 +730,26 @@ for c in d:
         else
             bad "'$cname' can leak IPv6 outside the tunnel"
         fi
-        [[ -z $first_conf ]] && first_conf="$conf"
+        if [[ -z $first_conf ]]; then
+            first_conf="$conf"
+            first_id="$id"
+        fi
         connect_and_test_client "$cname" "$conf" "$server_ip"
     done <<< "$ids"
+
+    head2 "Remove a client through the web API"
+    if [[ -n $first_id && -n $first_conf ]]; then
+        code="$(curl -s -b "$jar" -o /dev/null -w '%{http_code}' --max-time 15 \
+            -X DELETE "$base/api/client/${first_id}")"
+        if [[ $code == "200" || $code == "204" ]]; then
+            ok "Removed a client through the wg-easy API"
+            connect_and_expect_rejected "wg-easy-deleted" "$first_conf"
+        else
+            bad "Could not remove a client through the wg-easy API (HTTP $code)"
+        fi
+    else
+        bad "No wg-easy client was available for the removal test"
+    fi
 
     # A phone on your Wi-Fi does not use the Docker gateway. It uses the
     # address of this server on the local network. Test that path too,
@@ -736,7 +803,7 @@ run_wireguard() {
     test_dns_chain
 
     head2 "Read the client configurations from the server"
-    local c
+    local c phone_conf="" phone_public=""
     c="$(cd "$WORK_DIR" && docker compose -p "$PROJECT" ps -q wireguard | head -1)"
 
     for cname in phone laptop; do
@@ -754,6 +821,12 @@ run_wireguard() {
             continue
         fi
 
+        if [[ $cname == "phone" ]]; then
+            phone_conf="$conf"
+            phone_public="$(awk -F' *= *' '$1 == "PrivateKey" { print $2 }' <<< "$conf" \
+                | docker exec -i "$c" wg pubkey 2> /dev/null)"
+        fi
+
         if grep -q "^DNS = ${TEST_PIHOLE_IP}" <<< "$conf"; then
             ok "'$cname' uses Pi-hole for DNS"
         else
@@ -762,6 +835,23 @@ run_wireguard() {
 
         connect_and_test_client "$cname" "$conf" "10.98.13.1"
     done
+
+
+    head2 "Remove a named client"
+    set_env_var WIREGUARD_PEERS "laptop"
+    if (cd "$WORK_DIR" && docker compose -p "$PROJECT" up -d --force-recreate --wait --wait-timeout 240) \
+        > /tmp/e2e-remove-peer.log 2>&1; then
+        c="$(cd "$WORK_DIR" && docker compose -p "$PROJECT" ps -q wireguard | head -1)"
+        if [[ -n $phone_public ]] && docker exec "$c" wg show wg0 peers | grep -qxF "$phone_public"; then
+            bad "The removed named client is still in the server configuration"
+        else
+            ok "The server removed the named client from its configuration"
+        fi
+        [[ -n $phone_conf ]] && connect_and_expect_rejected "wireguard-removed" "$phone_conf"
+    else
+        bad "The stack did not restart after a named client was removed"
+        tail -20 /tmp/e2e-remove-peer.log
+    fi
 
     teardown
 }
