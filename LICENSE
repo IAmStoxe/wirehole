@@ -1,0 +1,37 @@
+MIT License
+
+Copyright (c) 2019-2026 Devin Stokes
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+Third party components
+
+This license covers the files in this repository only: the compose file,
+the scripts, the configuration, and the documentation. The stack pulls
+container images of other projects at run time. Those projects keep their
+own licenses, and this repository includes none of their code:
+
+  Pi-hole                  EUPL-1.2    https://github.com/pi-hole/pi-hole
+  Unbound                  BSD-3-Clause  https://github.com/NLnetLabs/unbound
+  unbound-docker (image)   BSD-3-Clause  https://github.com/klutchell/unbound-docker
+  wg-easy                  AGPL-3.0    https://github.com/wg-easy/wg-easy
+  docker-wireguard (image) GPL-3.0     https://github.com/linuxserver/docker-wireguard
+  wireguard-tools          GPL-2.0     https://git.zx2c4.com/wireguard-tools/

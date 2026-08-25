@@ -1,0 +1,319 @@
+name: CI
+
+# This workflow tests the stack. It runs on each push and on each pull
+# request. It also runs one time each week. The weekly run finds a problem
+# in a new image version.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  schedule:
+    # Run at 06:00 UTC on Monday. This run replaces the pinned image
+    # versions with "latest", so it finds a new image version that breaks
+    # the stack before a user does. A red weekly run means: read the
+    # release notes of the images, not: the repository is broken.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push cancels the runs of the old push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Check the files
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the syntax of the shell scripts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck scripts/*.sh tests/*.sh
+
+      - name: Run the setup script regressions
+        run: ./tests/script-tests.sh
+
+      - name: Check the Windows test syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path tests/windows-client-test.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -ne 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+
+      - name: Check that the compose file is valid
+        run: |
+          cp .env.example .env
+          # Give a value to each necessary variable. The compose file stops
+          # without these values.
+          sed -i 's|^VPN_HOST=.*|VPN_HOST=192.0.2.1|' .env
+          sed -i 's|^PIHOLE_PASSWORD=.*|PIHOLE_PASSWORD=ci-test-password|' .env
+          sed -i 's|^WG_EASY_PASSWORD=.*|WG_EASY_PASSWORD=ci-test-password|' .env
+          docker compose config --quiet
+          COMPOSE_PROFILES=wireguard docker compose config --quiet
+
+      - name: Check that a missing password stops the stack
+        run: |
+          printf 'VPN_HOST=192.0.2.1\n' > empty.env
+          if docker compose --env-file empty.env config --quiet 2> error.log; then
+            echo "ERROR: The compose file started without a password."
+            exit 1
+          fi
+          # Compose names one missing variable in the error. Which one comes
+          # first depends on the compose version, so accept either password.
+          grep -qE 'PIHOLE_PASSWORD|WG_EASY_PASSWORD' error.log || {
+            echo "ERROR: The refusal did not mention a password variable."
+            cat error.log
+            exit 1
+          }
+          echo "OK: The compose file needs a password."
+
+      - name: Check that no secret is in the repository
+        run: |
+          # The file .env holds the passwords. Git must ignore it.
+          git check-ignore .env > /dev/null || {
+            echo "ERROR: Git does not ignore the file .env."
+            exit 1
+          }
+          # Ask about a file inside the directory, not about the directory
+          # itself. The pattern "data/" only matches a directory, and on a
+          # fresh checkout the directory does not exist yet, so the plain
+          # "data" question gets the answer "not ignored".
+          git check-ignore data/anything > /dev/null || {
+            echo "ERROR: Git does not ignore the directory data."
+            exit 1
+          }
+          echo "OK: Git ignores the secret files."
+
+  test:
+    name: Start the stack and test the DNS
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [wg-easy, wireguard]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make the configuration file
+        run: |
+          cp .env.example .env
+          sed -i 's|^VPN_HOST=.*|VPN_HOST=192.0.2.1|' .env
+          sed -i 's|^PIHOLE_PASSWORD=.*|PIHOLE_PASSWORD=ci-test-password|' .env
+          sed -i 's|^WG_EASY_PASSWORD=.*|WG_EASY_PASSWORD=ci-test-password|' .env
+          sed -i 's|^COMPOSE_PROFILES=.*|COMPOSE_PROFILES=${{ matrix.profile }}|' .env
+
+      - name: Use the newest images on the weekly run
+        if: github.event_name == 'schedule'
+        run: |
+          # The normal runs test the pinned versions, the same bits every
+          # time. The weekly run tests the newest images instead, so a new
+          # image version that breaks the stack shows up here first.
+          sed -i -E 's|^(PIHOLE_VERSION)=.*|\1=latest|' .env
+          sed -i -E 's|^(UNBOUND_VERSION)=.*|\1=latest|' .env
+          sed -i -E 's|^(WG_EASY_VERSION)=.*|\1=15|' .env
+          sed -i -E 's|^(WIREGUARD_VERSION)=.*|\1=latest|' .env
+          grep -E '^(PIHOLE|UNBOUND|WG_EASY|WIREGUARD)_VERSION=' .env
+
+      - name: Start the stack
+        run: docker compose up -d --wait --wait-timeout 180
+
+      - name: Show the state of the containers
+        if: always()
+        run: docker compose ps
+
+      - name: Test the name resolution through Pi-hole
+        run: |
+          for i in $(seq 1 10); do
+            result=$(docker exec wirehole-pihole dig +short +time=5 example.com @127.0.0.1 || true)
+            if [ -n "$result" ]; then
+              echo "OK: Pi-hole resolved example.com to $result"
+              exit 0
+            fi
+            echo "Attempt $i gave no answer. The test waits 5 seconds."
+            sleep 5
+          done
+          echo "ERROR: Pi-hole did not resolve the name."
+          exit 1
+
+      - name: Test the recursive resolver
+        run: |
+          result=$(docker exec wirehole-pihole dig +short +time=8 wikipedia.org @10.2.0.200)
+          test -n "$result"
+          echo "OK: Unbound resolved wikipedia.org to $result"
+
+      - name: Test the DNSSEC validation
+        run: |
+          # A signed domain must give the flag "ad".
+          flags=$(docker exec wirehole-pihole dig +dnssec +time=8 cloudflare.com @10.2.0.200 | grep '^;; flags')
+          echo "$flags" | grep -q ' ad' || {
+            echo "ERROR: Unbound did not validate a signed domain."
+            echo "$flags"
+            exit 1
+          }
+          echo "OK: Unbound validated a signed domain."
+
+          # A domain with a bad signature must give SERVFAIL.
+          status=$(docker exec wirehole-pihole dig +time=8 dnssec-failed.org @10.2.0.200 | grep 'status:')
+          echo "$status" | grep -q 'SERVFAIL' || {
+            echo "ERROR: Unbound accepted a bad signature."
+            echo "$status"
+            exit 1
+          }
+          echo "OK: Unbound refused a bad signature."
+
+      - name: Test the advertisement blocking
+        run: |
+          result=$(docker exec wirehole-pihole dig +short +time=5 doubleclick.net @127.0.0.1)
+          test "$result" = "0.0.0.0"
+          echo "OK: Pi-hole blocked doubleclick.net"
+
+      - name: Test the web interfaces
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:8080/admin/)
+          echo "Pi-hole answered with HTTP $code"
+          test "$code" -lt 500
+
+          if [ "${{ matrix.profile }}" = "wg-easy" ]; then
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:51821/)
+            echo "wg-easy answered with HTTP $code"
+            test "$code" -lt 500
+          fi
+
+      - name: Test that port 53 is not public
+        run: |
+          # The stack must not publish the DNS port. An open resolver is
+          # dangerous.
+          if docker compose ps --format '{{.Ports}}' | grep -qE '0\.0\.0\.0:53|:::53'; then
+            echo "ERROR: The stack publishes port 53 to all addresses."
+            docker compose ps --format '{{.Name}}: {{.Ports}}'
+            exit 1
+          fi
+          echo "OK: The stack does not publish port 53."
+
+      - name: Test that the VPN interface works
+        run: |
+          if [ "${{ matrix.profile }}" = "wg-easy" ]; then
+            docker exec wirehole-wg-easy wg show | grep -q 'interface:'
+          else
+            docker exec wirehole-wireguard wg show | grep -q 'interface:'
+            # The service must write a configuration file for the client.
+            # It writes the file a moment after the start, so wait for it.
+            # Read the file in the container. The files on the host belong
+            # to the user of the variable PUID.
+            for i in $(seq 1 30); do
+              if docker exec wirehole-wireguard cat /config/peer1/peer1.conf 2>/dev/null \
+                | grep -q '^DNS = 10.2.0.100'; then
+                break
+              fi
+              if [ "$i" = "30" ]; then
+                echo "ERROR: No peer configuration appeared after 60 seconds."
+                docker exec wirehole-wireguard ls -R /config | head -30
+                exit 1
+              fi
+              sleep 2
+            done
+          fi
+          echo "OK: The VPN interface works."
+
+      - name: Read the logs after a failure
+        if: failure()
+        run: docker compose logs --tail 100
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose --profile wg-easy --profile wireguard down -v
+
+  ui:
+    name: Drive the web interfaces in a browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The e2e job proves the VPN and the API. This job proves the pages: a
+    # browser fills the login forms, reads the dashboard, creates a client,
+    # and downloads its configuration. A page that throws a JavaScript
+    # error fails the job.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make the configuration file
+        run: |
+          cp .env.example .env
+          sed -i 's|^VPN_HOST=.*|VPN_HOST=192.0.2.1|' .env
+          sed -i 's|^PIHOLE_PASSWORD=.*|PIHOLE_PASSWORD=ci-test-password|' .env
+          sed -i 's|^WG_EASY_PASSWORD=.*|WG_EASY_PASSWORD=ci-test-password|' .env
+
+      - name: Start the stack
+        run: docker compose up -d --wait --wait-timeout 180
+
+      - name: Test the pages in a real browser
+        run: ./tests/ui-test.sh
+
+      - name: Read the logs after a failure
+        if: failure()
+        run: docker compose logs --tail 60
+
+      - name: Keep the failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-failure-screenshot
+          path: tests/ui/ui-failure.png
+          if-no-files-found: ignore
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v
+
+  e2e:
+    name: Connect a real VPN client
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # This job answers the question that matters to a user: does a phone
+    # connect and get working, filtered internet? It starts the stack, makes
+    # client configurations the same way a user makes them, and connects real
+    # WireGuard clients.
+    #
+    # This job found a fault that no other test could see: wg-easy listens on
+    # the port from VPN_PORT inside the container, so a published port with a
+    # different number accepted no connection and reported no error.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the runner has WireGuard
+        run: |
+          sudo modprobe wireguard || true
+          lsmod | grep -q wireguard || modinfo wireguard
+          echo "OK: the kernel has the WireGuard module."
+
+      - name: Use the newest images on the weekly run
+        if: github.event_name == 'schedule'
+        run: |
+          sed -i -E 's|^(PIHOLE_VERSION)=.*|\1=latest|' .env.example
+          sed -i -E 's|^(UNBOUND_VERSION)=.*|\1=latest|' .env.example
+          sed -i -E 's|^(WG_EASY_VERSION)=.*|\1=15|' .env.example
+          sed -i -E 's|^(WIREGUARD_VERSION)=.*|\1=latest|' .env.example
+
+      - name: Test both back ends with real clients
+        run: ./tests/e2e-vpn.sh
+
+      - name: Remove anything left behind
+        if: always()
+        run: |
+          docker ps -aq --filter name=wirehole-e2e | xargs -r docker rm -f
+          docker network prune -f
