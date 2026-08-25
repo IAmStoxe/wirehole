@@ -178,6 +178,23 @@ set_env_var() {
     ' "$WORK_DIR/.env" > "$WORK_DIR/.env.tmp" && mv "$WORK_DIR/.env.tmp" "$WORK_DIR/.env"
 }
 
+pull_stack_images() {
+    local attempt
+
+    : > /tmp/e2e-up.log
+    for attempt in 1 2 3; do
+        if (cd "$WORK_DIR" && docker compose -p "$PROJECT" pull) \
+            >> /tmp/e2e-up.log 2>&1; then
+            return 0
+        fi
+        if [[ $attempt -eq 3 ]]; then
+            return 1
+        fi
+        info "Image pull attempt $attempt failed. Retrying."
+        sleep $((attempt * 10))
+    done
+}
+
 start_stack() {
     local profile="$1" peers="${2:-}"
     local stack_subnet="${3:-$TEST_SUBNET}"
@@ -213,7 +230,9 @@ start_stack() {
     set_env_var WEB_BIND_ADDRESS "127.0.0.1"
     [[ -n $peers ]] && set_env_var WIREGUARD_PEERS "$peers"
 
-    (cd "$WORK_DIR" && docker compose -p "$PROJECT" up -d --wait --wait-timeout 240) > /tmp/e2e-up.log 2>&1
+    pull_stack_images || return 1
+    (cd "$WORK_DIR" && docker compose -p "$PROJECT" up -d --wait --wait-timeout 240) \
+        >> /tmp/e2e-up.log 2>&1
 }
 
 # ---------------------------------------------------------------------------
